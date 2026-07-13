@@ -106,6 +106,8 @@ class DockerAPI:
         self._dockerStopped = False
         self._subscribers: list[Callable] = []
         self._api: aiodocker.Docker = None
+        # Event used to wake the poll loops for an on-demand refresh (reload service)
+        self._refresh_event: asyncio.Event = asyncio.Event()
 
         _LOGGER.debug("[%s]: Helper version: %s", self._instance, VERSION)
 
@@ -544,6 +546,32 @@ class DockerAPI:
                                 oname,
                             )
 
+                    elif event["Action"] in (
+                        "start",
+                        "stop",
+                        "die",
+                        "kill",
+                        "oom",
+                        "pause",
+                        "unpause",
+                        "restart",
+                    ) or event["Action"].startswith("health_status"):
+                        # A container changed state or health without being added or
+                        # removed. The info/stats loops would otherwise only notice on
+                        # the next scan_interval, so trigger an immediate refresh to
+                        # update the entities and container counters right away.
+                        try:
+                            _cname = event["Actor"]["Attributes"]["name"]
+                        except (KeyError, TypeError):
+                            _cname = ""
+                        _LOGGER.debug(
+                            "[%s] %s: Event '%s' -> on-demand refresh",
+                            self._instance,
+                            _cname,
+                            event["Action"],
+                        )
+                        self.request_refresh()
+
         except Exception as err:
             exc_info = True if str(err) == "" else False
             _LOGGER.error(
@@ -809,7 +837,7 @@ class DockerAPI:
             if error:
                 await asyncio.sleep(self._retry_interval)
             else:
-                await asyncio.sleep(self._interval)
+                await self._sleep_or_refresh(self._interval)
 
     #############################################################
     def list_containers(self):
@@ -828,6 +856,27 @@ class DockerAPI:
     #############################################################
     def get_info(self) -> dict[str, Any]:
         return self._info
+
+    #############################################################
+    def request_refresh(self) -> None:
+        """Wake the info loop and every container loop to fetch immediately."""
+        _LOGGER.debug("[%s]: On-demand refresh requested", self._instance)
+        # Each loop owns its event and clears it after waking, so a request is
+        # never lost even if a loop happens to be mid-fetch when it arrives
+        # (e.g. the rapid die+start events of a container restart).
+        self._refresh_event.set()
+        for container in list(self._containers.values()):
+            container.request_refresh()
+
+    #############################################################
+    async def _sleep_or_refresh(self, seconds: int) -> None:
+        """Sleep for 'seconds', but wake early if a refresh was requested."""
+        try:
+            await asyncio.wait_for(self._refresh_event.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            self._refresh_event.clear()
 
 
 #################################################################
@@ -848,6 +897,7 @@ class DockerContainerAPI:
         self._name = cname
         self._interval: int = config[CONF_SCAN_INTERVAL].seconds
         self._retry_interval: int = config[CONF_RETRY]
+        self._refresh_event: asyncio.Event = asyncio.Event()
         self._busy = False
         self._atInit = atInit
         self._task: asyncio.Task | None = None
@@ -915,6 +965,21 @@ class DockerContainerAPI:
         self._task = asyncio.create_task(self._run())
 
         return True
+
+    #############################################################
+    def request_refresh(self) -> None:
+        """Wake this container's loop to fetch immediately."""
+        self._refresh_event.set()
+
+    #############################################################
+    async def _sleep_or_refresh(self, seconds: int) -> None:
+        """Sleep for 'seconds', but wake early if a refresh was requested."""
+        try:
+            await asyncio.wait_for(self._refresh_event.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            self._refresh_event.clear()
 
     #############################################################
     async def _run(self) -> None:
@@ -995,7 +1060,7 @@ class DockerContainerAPI:
             if error:
                 await asyncio.sleep(self._retry_interval)
             else:
-                await asyncio.sleep(self._interval)
+                await self._sleep_or_refresh(self._interval)
 
     #############################################################
     async def _run_container_info(self) -> None:

@@ -12,7 +12,7 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
     CONF_URL,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.reload import async_setup_reload_service
 
@@ -48,6 +48,7 @@ from .const import (
     DOMAIN,
     MONITORED_CONDITIONS_LIST,
     PRECISION,
+    SERVICE_RELOAD,
 )
 from .helpers import DockerAPI
 
@@ -173,6 +174,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         # Each docker hosts runs in its own thread. We need to pass hass too, for the load_platform
         asyncio.create_task(RunDocker(hass, entry))
+
+    # Register an on-demand reload/refresh service. Calling it wakes every poll
+    # loop so fresh Docker data is fetched immediately instead of waiting for the
+    # next scan_interval.
+    async def async_handle_reload(call: ServiceCall) -> None:
+        for _name, data in hass.data.get(DOMAIN, {}).items():
+            api = data.get(API)
+            if api is not None:
+                api.request_refresh()
+
+    hass.services.async_register(DOMAIN, SERVICE_RELOAD, async_handle_reload)
 
     return True
 

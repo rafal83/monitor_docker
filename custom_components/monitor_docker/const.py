@@ -42,6 +42,7 @@ DEFAULT_BUTTONNAME = "{name} Restart"
 COMPONENTS = ["sensor", "switch", "button"]
 
 SERVICE_RESTART = "restart"
+SERVICE_RELOAD = "reload"
 
 PRECISION = 2
 
