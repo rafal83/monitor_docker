@@ -22,15 +22,30 @@
     "config": {
         "step": {
             "user": {
-                "description": "Setup a connection to docker host",
+                "description": "Set up a connection to a Docker host",
                 "data": {
                     "name": "Name of Docker daemon",
-                    "url": "Host URL of Docker daemon",
-                    "version": "Docker API version (leave as 'auto' unless you need to pin a specific version)",
+                    "connection_type": "How to connect",
                     "scan_interval": "Update interval (seconds)",
-                    "certpath": "If a TCP socket is used, you can define your Docker certificate path, forcing Monitor Docker to enable TLS. The filenames must be cert.pem and key.pem",
-                    "portainer_apikey": "Optional: a Portainer API key. Set this together with a URL pointing at a Portainer Docker-proxy endpoint (https://YOUR-PORTAINER:9443/api/endpoints/ENDPOINT-ID/docker) to connect through Portainer instead of a Docker daemon directly.",
                     "retry": "Retry interval (seconds)"
+                }
+            },
+            "docker_connection": {
+                "description": "Connect directly to a Docker daemon (local socket, or remote over TCP)",
+                "data": {
+                    "url": "Host URL of Docker daemon. Leave empty to auto-detect a local socket. For a remote daemon use e.g. tcp://ip:2375, or ssh://user@host",
+                    "version": "Docker API version (leave as 'auto' unless you need to pin a specific version)",
+                    "certpath": "If a TCP socket is used, you can define your Docker certificate path, forcing Monitor Docker to enable TLS. The filenames must be cert.pem and key.pem"
+                }
+            },
+            "portainer_connection": {
+                "description": "Connect through a Portainer Docker-proxy endpoint instead of a Docker daemon directly. Get the API key from Portainer under My account > API tokens, and the endpoint id from the URL when viewing that environment in Portainer.",
+                "data": {
+                    "portainer_host": "Portainer host or IP address",
+                    "portainer_port": "Portainer port",
+                    "portainer_https": "Portainer uses HTTPS (self-signed certificates are accepted automatically)",
+                    "portainer_endpoint_id": "Portainer endpoint id",
+                    "portainer_apikey": "Portainer API key"
                 }
             },
             "reconfigure": {

@@ -25,12 +25,27 @@
                 "description": "Configurer une connexion à un hôte Docker",
                 "data": {
                     "name": "Nom du démon Docker",
-                    "url": "URL de l'hôte du démon Docker",
-                    "version": "Version de l'API Docker (laisser 'auto' sauf si vous devez figer une version spécifique)",
+                    "connection_type": "Mode de connexion",
                     "scan_interval": "Intervalle de mise à jour (secondes)",
-                    "certpath": "Si un socket TCP est utilisé, vous pouvez définir le chemin de votre certificat Docker, ce qui force Monitor Docker à activer TLS. Les fichiers doivent se nommer cert.pem et key.pem",
-                    "portainer_apikey": "Optionnel : une clé API Portainer. À définir avec une URL pointant vers un endpoint proxy Docker de Portainer (https://VOTRE-PORTAINER:9443/api/endpoints/ID-ENDPOINT/docker) pour se connecter via Portainer plutôt que directement à un démon Docker.",
                     "retry": "Intervalle de nouvelle tentative (secondes)"
+                }
+            },
+            "docker_connection": {
+                "description": "Connexion directe à un démon Docker (socket local, ou distant via TCP)",
+                "data": {
+                    "url": "URL de l'hôte du démon Docker. Laisser vide pour détecter automatiquement un socket local. Pour un démon distant, utiliser par exemple tcp://ip:2375, ou ssh://utilisateur@hôte",
+                    "version": "Version de l'API Docker (laisser 'auto' sauf si vous devez figer une version spécifique)",
+                    "certpath": "Si un socket TCP est utilisé, vous pouvez définir le chemin de votre certificat Docker, ce qui force Monitor Docker à activer TLS. Les fichiers doivent se nommer cert.pem et key.pem"
+                }
+            },
+            "portainer_connection": {
+                "description": "Connexion via un endpoint proxy Docker de Portainer plutôt que directement à un démon Docker. Récupère la clé API dans Portainer sous Mon compte > API tokens, et l'id d'endpoint dans l'URL en consultant cet environnement dans Portainer.",
+                "data": {
+                    "portainer_host": "Hôte ou adresse IP de Portainer",
+                    "portainer_port": "Port de Portainer",
+                    "portainer_https": "Portainer utilise HTTPS (les certificats auto-signés sont acceptés automatiquement)",
+                    "portainer_endpoint_id": "Id de l'endpoint Portainer",
+                    "portainer_apikey": "Clé API Portainer"
                 }
             },
             "reconfigure": {

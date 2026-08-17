@@ -27,12 +27,17 @@ from .const import (
     API,
     CONF_BUTTONENABLED,
     CONF_CERTPATH,
+    CONF_CONNECTION_TYPE,
     CONF_CONTAINERS,
     CONF_CONTAINERS_EXCLUDE,
     CONF_MEMORYCHANGE,
     CONF_MONITORED_CONTAINER_CONDITIONS,
     CONF_MONITORED_DOCKER_CONDITIONS,
     CONF_PORTAINER_APIKEY,
+    CONF_PORTAINER_ENDPOINT_ID,
+    CONF_PORTAINER_HOST,
+    CONF_PORTAINER_HTTPS,
+    CONF_PORTAINER_PORT,
     CONF_PRECISION_CPU,
     CONF_PRECISION_DISK_MB,
     CONF_PRECISION_MEMORY_MB,
@@ -45,6 +50,7 @@ from .const import (
     CONTAINER_MONITOR_LIST,
     CONTAINER_PRE_SELECTION,
     DEFAULT_NAME,
+    DEFAULT_PORTAINER_PORT,
     DEFAULT_RETRY,
     DEFAULT_SCAN_INTERVAL,
     DOCKER_MONITOR_LIST,
@@ -68,6 +74,10 @@ DEFAULT_DATA = {
     CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
     CONF_CERTPATH: "",
     CONF_PORTAINER_APIKEY: "",
+    CONF_PORTAINER_HOST: "",
+    CONF_PORTAINER_PORT: DEFAULT_PORTAINER_PORT,
+    CONF_PORTAINER_HTTPS: True,
+    CONF_PORTAINER_ENDPOINT_ID: "",
     CONF_RETRY: DEFAULT_RETRY,
     # Containers
     CONF_CONTAINERS: [],
@@ -110,69 +120,88 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         self._docker_conditions = list(DOCKER_PRE_SELECTION)
         self._container_conditions = list(CONTAINER_PRE_SELECTION)
 
+    async def _test_connection_and_check_name(
+        self, test_config: dict[str, Any]
+    ) -> dict[str, str]:
+        """Test Docker/Portainer connectivity and check for a name collision.
+
+        Shared by the docker/portainer connection steps so both end up with
+        identical validation. Returns an errors dict (empty if all good).
+        """
+        errors: dict[str, str] = {}
+
+        try:
+            self._docker_api = DockerAPI(self.hass, test_config)
+            await self._docker_api.init()
+        except Exception as e:  # pylint: disable=broad-except
+            _LOGGER.exception("Unhandled exception testing the connection")
+            errors["base"] = str(e)
+
+        # Unless re-authorization, check and abort if name already exists.
+        # When reconfiguring, the entry's own (still unchanged) name is
+        # already registered - that's not a collision.
+        if self.source != SOURCE_REAUTH:
+            unchanged_name = (
+                self._config_entry is not None
+                and self._config_entry.data.get(CONF_NAME) == self.data[CONF_NAME]
+            )
+            if (
+                not unchanged_name
+                and DOMAIN in self.hass.data
+                and self.data[CONF_NAME] in self.hass.data[DOMAIN]
+            ):
+                errors[CONF_NAME] = "name_exists"
+
+            await self.async_set_unique_id(self.data[CONF_NAME])
+            if not self._config_entry:
+                self._abort_if_unique_id_configured()
+
+        return errors
+
+    async def _async_step_after_connection(self) -> ConfigFlowResult:
+        """Continue the flow once a connection has been validated."""
+        if self.source == SOURCE_REAUTH:
+            return self.async_update_reload_and_abort(
+                self._config_entry,
+                data=self.data,
+            )
+        return await self.async_step_containers()
+
     async def async_step_user(
         self, user_input: Mapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle user step."""
-        errors = {}
+        """Handle user step: name and how to connect."""
 
         if user_input is not None:
             self.data.update(user_input)
+            if user_input[CONF_CONNECTION_TYPE] == "portainer":
+                return await self.async_step_portainer_connection()
+            return await self.async_step_docker_connection()
 
-            # Convert some user_input data as preparation to calling API
-            if user_input[CONF_URL] == "":
-                user_input[CONF_URL] = None
-            user_input[CONF_MEMORYCHANGE] = self.data[CONF_MEMORYCHANGE]
-
-            # Test connection to Docker
-            try:
-                self._docker_api = DockerAPI(self.hass, user_input)
-                await self._docker_api.init()
-                #errors["base"] = "invalid_connection"
-            except Exception as e:  # pylint: disable=broad-except
-                _LOGGER.exception("Unhandled exception in user step")
-                errors["base"] = str(e)
-
-            # Unless re-authorization, check and abort if name already exists.
-            # When reconfiguring, the entry's own (still unchanged) name is
-            # already registered - that's not a collision.
-            if self.source != SOURCE_REAUTH:
-                unchanged_name = (
-                    self._config_entry is not None
-                    and self._config_entry.data.get(CONF_NAME)
-                    == user_input[CONF_NAME]
-                )
-                if (
-                    not unchanged_name
-                    and DOMAIN in self.hass.data
-                    and user_input[CONF_NAME] in self.hass.data[DOMAIN]
-                ):
-                    errors[CONF_NAME] = "name_exists"
-
-                await self.async_set_unique_id(user_input[CONF_NAME])
-                if not self._config_entry:
-                    self._abort_if_unique_id_configured()
-
-            if not errors:
-                if self.source == SOURCE_REAUTH:
-                    return self.async_update_reload_and_abort(
-                        self._config_entry,
-                        data=self.data,
-                    )
-                return await self.async_step_containers()
+        connection_type_default = (
+            "portainer" if self.data[CONF_PORTAINER_APIKEY] else "docker"
+        )
 
         user_schema = vol.Schema(
             {
                 vol.Required(CONF_NAME, default=self.data[CONF_NAME]): str,
-                vol.Optional(CONF_URL, default=self.data[CONF_URL]): str,
-                vol.Optional(CONF_VERSION, default=self.data[CONF_VERSION]): str,
+                vol.Required(
+                    CONF_CONNECTION_TYPE, default=connection_type_default
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="docker", label="Direct Docker connection"
+                            ),
+                            selector.SelectOptionDict(
+                                value="portainer", label="Via Portainer proxy"
+                            ),
+                        ],
+                    ),
+                ),
                 vol.Required(
                     CONF_SCAN_INTERVAL, default=self.data[CONF_SCAN_INTERVAL]
                 ): int,
-                vol.Optional(CONF_CERTPATH, default=self.data[CONF_CERTPATH]): str,
-                vol.Optional(
-                    CONF_PORTAINER_APIKEY, default=self.data[CONF_PORTAINER_APIKEY]
-                ): str,
                 vol.Required(CONF_RETRY, default=self.data[CONF_RETRY]): int,
             }
         )
@@ -180,6 +209,87 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=user_schema,
+        )
+
+    async def async_step_docker_connection(
+        self, user_input: Mapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle a direct Docker daemon connection (socket or TCP)."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self.data.update(user_input)
+            self.data[CONF_PORTAINER_APIKEY] = ""
+
+            test_config = {**self.data}
+            if test_config[CONF_URL] == "":
+                test_config[CONF_URL] = None
+
+            errors = await self._test_connection_and_check_name(test_config)
+
+            if not errors:
+                return await self._async_step_after_connection()
+
+        docker_schema = vol.Schema(
+            {
+                vol.Optional(CONF_URL, default=self.data[CONF_URL]): str,
+                vol.Optional(CONF_VERSION, default=self.data[CONF_VERSION]): str,
+                vol.Optional(CONF_CERTPATH, default=self.data[CONF_CERTPATH]): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="docker_connection",
+            data_schema=docker_schema,
+            errors=errors,
+        )
+
+    async def async_step_portainer_connection(
+        self, user_input: Mapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle a connection through a Portainer Docker-proxy endpoint."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self.data.update(user_input)
+            self.data[CONF_CERTPATH] = ""
+
+            scheme = "https" if self.data[CONF_PORTAINER_HTTPS] else "http"
+            self.data[CONF_URL] = (
+                f"{scheme}://{self.data[CONF_PORTAINER_HOST]}:"
+                f"{self.data[CONF_PORTAINER_PORT]}/api/endpoints/"
+                f"{self.data[CONF_PORTAINER_ENDPOINT_ID]}/docker"
+            )
+
+            errors = await self._test_connection_and_check_name(self.data)
+
+            if not errors:
+                return await self._async_step_after_connection()
+
+        portainer_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_PORTAINER_HOST, default=self.data[CONF_PORTAINER_HOST]
+                ): str,
+                vol.Required(
+                    CONF_PORTAINER_PORT, default=self.data[CONF_PORTAINER_PORT]
+                ): int,
+                vol.Required(
+                    CONF_PORTAINER_HTTPS, default=self.data[CONF_PORTAINER_HTTPS]
+                ): bool,
+                vol.Required(
+                    CONF_PORTAINER_ENDPOINT_ID,
+                    default=self.data[CONF_PORTAINER_ENDPOINT_ID],
+                ): str,
+                vol.Required(
+                    CONF_PORTAINER_APIKEY, default=self.data[CONF_PORTAINER_APIKEY]
+                ): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="portainer_connection",
+            data_schema=portainer_schema,
             errors=errors,
         )
 
@@ -213,13 +323,25 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reauth(
-        self, user_input: Mapping[str, Any] | None = None
+        self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
-        """Perform reauth upon an API authentication error."""
+        """Perform reauth upon an API authentication error.
+
+        Goes straight to the relevant connection sub-step (pre-filled from
+        the entry, asking the user to fix/confirm credentials) rather than
+        through async_step_user - entry_data is the entry's existing data,
+        not a freshly submitted form, and doesn't have every field the
+        user step's own form now asks for (e.g. connection_type).
+        """
         self._config_entry = self.hass.config_entries.async_get_entry(
             self.context["entry_id"]
         )
-        return await self.async_step_user(user_input)
+        if self._config_entry is not None:
+            self.data = {**self._config_entry.data}
+
+        if self.data[CONF_PORTAINER_APIKEY]:
+            return await self.async_step_portainer_connection()
+        return await self.async_step_docker_connection()
 
     async def async_step_containers(
         self, user_input: Mapping[str, Any] | None = None
