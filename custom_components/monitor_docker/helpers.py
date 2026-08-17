@@ -119,7 +119,6 @@ class DockerAPI:
 
         self._hass = hass
         self._config = config
-        self._config_entry = config_entry
         self._entry_id = config_entry.entry_id if config_entry else None
         self._instance: str = config[CONF_NAME]
         self._containers: dict[str, DockerContainerAPI] = {}
@@ -995,15 +994,27 @@ class DockerAPI:
         Returns the subentry_id, or None if there is no entry to attach to
         (e.g. the transient DockerAPI instance used to test a connection
         during config flow setup).
-        """
-        if not self._config_entry:
-            return None
 
+        Always re-fetches the config entry from the registry instead of
+        trusting self._config_entry: async_add_subentry() (and possibly
+        other config_entries operations) can replace the ConfigEntry object
+        HA holds internally, and a stale local reference here would show a
+        subentry as "not created yet" when it actually already exists,
+        leading to a duplicate-unique_id crash on the next container of the
+        same stack - which then never gets attached to the subentry at all.
+        """
         if stack in self._stack_subentries:
             return self._stack_subentries[stack]
 
+        if not self._entry_id:
+            return None
+
+        entry = self._hass.config_entries.async_get_entry(self._entry_id)
+        if entry is None:
+            return None
+
         subentry_id = None
-        for subentry in self._config_entry.subentries.values():
+        for subentry in entry.subentries.values():
             if subentry.subentry_type == STACK_SUBENTRY_TYPE and subentry.unique_id == stack:
                 subentry_id = subentry.subentry_id
                 break
@@ -1015,7 +1026,7 @@ class DockerAPI:
                 title=stack,
                 unique_id=stack,
             )
-            self._hass.config_entries.async_add_subentry(self._config_entry, subentry)
+            self._hass.config_entries.async_add_subentry(entry, subentry)
             subentry_id = subentry.subentry_id
 
         self._stack_subentries[stack] = subentry_id
@@ -1053,7 +1064,23 @@ class DockerAPI:
         labels = container.get_labels() if container else {}
         stack = labels.get(LABEL_COMPOSE_PROJECT) or labels.get(LABEL_SWARM_STACK)
         is_new_stack = bool(stack) and stack not in self._stack_subentries
-        subentry_id = self._ensure_stack_subentry(stack) if stack else None
+
+        subentry_id = None
+        if stack:
+            try:
+                subentry_id = self._ensure_stack_subentry(stack)
+            except Exception as err:
+                # Don't let a stack/subentry hiccup abort the whole caller's
+                # container loop - fall back to no subentry for this one
+                # container rather than possibly leaving later containers
+                # unregistered entirely.
+                _LOGGER.error(
+                    "[%s] %s: Could not attach to stack '%s' subentry (%s)",
+                    self._instance,
+                    cname,
+                    stack,
+                    str(err),
+                )
 
         device_registry = dr.async_get(self._hass)
         device_registry.async_get_or_create(
