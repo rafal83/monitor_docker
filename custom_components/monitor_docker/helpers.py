@@ -38,6 +38,8 @@ from .const import (
     ATTR_VERSION_OS_TYPE,
     COMPONENTS,
     CONF_CERTPATH,
+    CONF_CONTAINERS,
+    CONF_CONTAINERS_EXCLUDE,
     CONF_MEMORYCHANGE,
     CONF_PORTAINER_APIKEY,
     CONF_PRECISION_CPU,
@@ -341,7 +343,40 @@ class DockerAPI:
             # load() creates entities that reference these same identifiers.
             self.register_container_device(cname)
 
+        self._remove_unmonitored_container_devices()
+
         self._hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._monitor_stop)
+
+    #############################################################
+    def _remove_unmonitored_container_devices(self) -> None:
+        """Remove leftover devices for containers no longer being monitored.
+
+        Handles both a container that's been added to containers_exclude
+        (or dropped from a non-empty containers allow list) since last
+        setup, and devices created by a past version of this integration
+        that (unlike register_container_device() now) didn't apply that
+        filter at all.
+        """
+        if not self._entry_id:
+            return
+
+        prefix = f"{self._instance}_container_"
+        device_registry = dr.async_get(self._hass)
+
+        for device in dr.async_entries_for_config_entry(
+            device_registry, self._entry_id
+        ):
+            for domain, identifier in device.identifiers:
+                if domain == DOMAIN and identifier.startswith(prefix):
+                    cname = identifier[len(prefix) :]
+                    if not self._is_monitored(cname):
+                        _LOGGER.debug(
+                            "[%s] %s: Removing device, no longer monitored",
+                            self._instance,
+                            cname,
+                        )
+                        device_registry.async_remove_device(device.id)
+                    break
 
     #############################################################
     async def load(self):
@@ -1069,6 +1104,22 @@ class DockerAPI:
         return subentry_id
 
     #############################################################
+    def _is_monitored(self, cname: str) -> bool:
+        """Whether cname is included per the containers/containers_exclude filter.
+
+        Mirrors the inclusion check in sensor.py/switch.py/button.py: every
+        container is polled (self._containers has all of them, needed for
+        host-level totals), but only the ones the user actually selected
+        should get entities - or a device at all.
+        """
+        included = (
+            cname in self._config[CONF_CONTAINERS] or not self._config[CONF_CONTAINERS]
+        )
+        if self._config[CONF_CONTAINERS_EXCLUDE] and cname in self._config[CONF_CONTAINERS_EXCLUDE]:
+            included = False
+        return included
+
+    #############################################################
     def register_container_device(self, cname: str) -> str | None:
         """(Re-)register a container's device with its stack's subentry, if any.
 
@@ -1077,11 +1128,15 @@ class DockerAPI:
         time the entities' own DeviceInfo references the same identifiers -
         DeviceInfo can't carry config_subentry_id itself.
 
+        No-op for containers excluded by the containers/containers_exclude
+        filter - they're still polled (for host totals) but never get
+        entities, so they shouldn't get an empty device either.
+
         Returns the stack name if this call is the one that just created a
         new stack (so the caller can spin up its "restart stack" button),
         None otherwise (no stack, or the stack already existed).
         """
-        if not self._entry_id:
+        if not self._entry_id or not self._is_monitored(cname):
             return None
 
         container = self._containers.get(cname)
