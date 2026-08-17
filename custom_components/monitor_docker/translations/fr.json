@@ -29,7 +29,7 @@
                     "version": "Version de l'API Docker (laisser 'auto' sauf si vous devez figer une version spécifique)",
                     "scan_interval": "Intervalle de mise à jour (secondes)",
                     "certpath": "Si un socket TCP est utilisé, vous pouvez définir le chemin de votre certificat Docker, ce qui force Monitor Docker à activer TLS. Les fichiers doivent se nommer cert.pem et key.pem",
-                    "portainer_apikey": "Optionnel : une clé API Portainer. À définir avec une URL pointant vers un endpoint proxy Docker de Portainer (https://<portainer>:9443/api/endpoints/<id>/docker) pour se connecter via Portainer plutôt que directement à un démon Docker.",
+                    "portainer_apikey": "Optionnel : une clé API Portainer. À définir avec une URL pointant vers un endpoint proxy Docker de Portainer (https://VOTRE-PORTAINER:9443/api/endpoints/ID-ENDPOINT/docker) pour se connecter via Portainer plutôt que directement à un démon Docker.",
                     "retry": "Intervalle de nouvelle tentative (secondes)"
                 }
             },

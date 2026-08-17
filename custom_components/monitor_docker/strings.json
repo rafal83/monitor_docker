@@ -29,7 +29,7 @@
                     "version": "Docker API version (leave as 'auto' unless you need to pin a specific version)",
                     "scan_interval": "Update interval (seconds)",
                     "certpath": "If a TCP socket is used, you can define your Docker certificate path, forcing Monitor Docker to enable TLS. The filenames must be cert.pem and key.pem",
-                    "portainer_apikey": "Optional: a Portainer API key. Set this together with a URL pointing at a Portainer Docker-proxy endpoint (https://<portainer>:9443/api/endpoints/<id>/docker) to connect through Portainer instead of a Docker daemon directly.",
+                    "portainer_apikey": "Optional: a Portainer API key. Set this together with a URL pointing at a Portainer Docker-proxy endpoint (https://YOUR-PORTAINER:9443/api/endpoints/ENDPOINT-ID/docker) to connect through Portainer instead of a Docker daemon directly.",
                     "retry": "Retry interval (seconds)"
                 }
             },
