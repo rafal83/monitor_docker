@@ -94,8 +94,6 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
     options = None
     _docker_api = None
     _config_entry: ConfigEntry | None = None
-    _docker_conditions = DOCKER_PRE_SELECTION
-    _container_conditions = CONTAINER_PRE_SELECTION
 
     def __init__(self) -> None:
         """Initialize the flow with its own copy of the defaults.
@@ -105,9 +103,12 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         which would otherwise corrupt DEFAULT_DATA (and leak between
         concurrent/sequential flow runs) since Python resolves an unset
         instance attribute to the class attribute of the same name.
+        Same reasoning for _docker_conditions/_container_conditions below.
         """
         super().__init__()
         self.data = dict(DEFAULT_DATA)
+        self._docker_conditions = list(DOCKER_PRE_SELECTION)
+        self._container_conditions = list(CONTAINER_PRE_SELECTION)
 
     async def async_step_user(
         self, user_input: Mapping[str, Any] | None = None
@@ -194,6 +195,16 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         self.data = {**self._config_entry.data}
         self._docker_api = self.hass.data[DOMAIN][self._config_entry.data[CONF_NAME]][
             API
+        ]
+
+        # Pre-fill the conditions form with what's actually configured,
+        # not the DOCKER_PRE_SELECTION/CONTAINER_PRE_SELECTION defaults -
+        # otherwise every visit to Reconfigure looks like past changes to
+        # the monitored conditions were never saved.
+        monitored = self.data.get(CONF_MONITORED_CONDITIONS, [])
+        self._docker_conditions = [c for c in monitored if c in DOCKER_MONITOR_LIST]
+        self._container_conditions = [
+            c for c in monitored if c in CONTAINER_MONITOR_LIST
         ]
 
         return self.async_show_menu(
