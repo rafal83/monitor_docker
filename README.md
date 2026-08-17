@@ -69,10 +69,13 @@ NOTE: This is untested, use at your own risk!
 
 #### GUI Assisted
 
-1. Klick Add integration and select "Monitor Docker"
-2. Set-up connection to Docker host
-3. Select which Containers to monitor
-4. Select which Conditions to monitor for both the host and each Container
+1. Click Add integration and select "Monitor Docker"
+2. Give it a name, choose how to connect - **Direct Docker connection** (local socket, or remote over `tcp://`/`ssh://`) or **Via Portainer proxy** (see the Portainer question in the Q&A) - and set the update/retry intervals
+3. Fill in the connection details for the mode you picked
+4. Select which Containers to monitor
+5. Select which Conditions to monitor for both the host and each Container
+
+Connection settings can be changed later from the integration's **Reconfigure** menu.
 
 #### Manual
 
@@ -290,14 +293,15 @@ monitor_docker:
 13. **Question:** Can the sensors have unique entity identifiers? This is useful for renaming it in the HA GUI  
      **Answer:** This is not possible, due to the nature of how this integration works. The docker name needs to be consistent across restart and recreate, this can be only done by overruling the entity identifier as it is working now
 14. **Question:** Can this integration connect through Portainer instead of directly to a Docker daemon?  
-     **Answer:** Yes. Portainer exposes a proxy that speaks the real Docker Engine API, so `monitor_docker` can talk to it like any other remote Docker host. Create an API key in Portainer (*My account -> API tokens*), then set:
+     **Answer:** Yes. Portainer exposes a proxy that speaks the real Docker Engine API, so `monitor_docker` can talk to it like any other remote Docker host. In the UI config flow, pick "Via Portainer proxy" as the connection type on the first step; it asks for the Portainer host, port, whether it's HTTPS, the endpoint id and the API key as separate fields and builds the proxy URL for you - you don't need to assemble `https://<host>:<port>/api/endpoints/<id>/docker` by hand (that's the URL the integration ends up using internally, not something to paste from Portainer's own web UI address bar). Get the API key from Portainer under *My account -> API tokens*, and the endpoint id from the URL when viewing that environment in Portainer (e.g. `.../#!/2/docker/...` -> id is `2`). Portainer's own certificate, self-signed or not, is trusted automatically for this connection - the API key is what authenticates it, not the certificate, so there's nothing extra to configure there.
+
+     For YAML configuration, the equivalent is:
 ```yaml
 monitor_docker:
   - name: Docker
     url: https://<portainer_host>:9443/api/endpoints/<endpoint_id>/docker
     portainer_apikey: ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
-     (`<endpoint_id>` is the numeric id of the environment in Portainer, visible in its URL when you open that environment.) The same fields are available in the UI config flow. If Portainer itself is served over HTTPS with a self-signed certificate, `certpath` is not the right tool for that (it's for a Docker daemon's own client-cert TLS) - make sure Portainer's certificate is otherwise trusted by the host running Home Assistant.
 
 ## Credits
 
