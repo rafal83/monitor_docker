@@ -256,7 +256,12 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_MONITORED_DOCKER_CONDITIONS, default=self._docker_conditions
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=list(DOCKER_MONITOR_LIST),
+                        options=[
+                            selector.SelectOptionDict(
+                                value=key, label=desc.name or key
+                            )
+                            for key, desc in DOCKER_MONITOR_LIST.items()
+                        ],
                         multiple=True,
                     ),
                 ),
@@ -265,7 +270,12 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
                     default=self._container_conditions,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=list(CONTAINER_MONITOR_LIST),
+                        options=[
+                            selector.SelectOptionDict(
+                                value=key, label=desc.name or key
+                            )
+                            for key, desc in CONTAINER_MONITOR_LIST.items()
+                        ],
                         multiple=True,
                     ),
                 ),
