@@ -1,8 +1,6 @@
 """Monitor Docker main component."""
 
-import asyncio
 import logging
-from datetime import timedelta
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
@@ -15,7 +13,7 @@ from homeassistant.const import (
     CONF_URL,
     Platform,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import (
     ConfigEntryNotReady,
     ConfigEntryError,
@@ -33,6 +31,7 @@ from .const import (
     CONF_CONTAINERS_EXCLUDE,
     CONF_MEMORYCHANGE,
     CONF_PRECISION_CPU,
+    CONF_PRECISION_DISK_MB,
     CONF_PRECISION_MEMORY_MB,
     CONF_PRECISION_MEMORY_PERCENTAGE,
     CONF_PRECISION_NETWORK_KB,
@@ -46,6 +45,7 @@ from .const import (
     CONF_SWITCHNAME,
     CONF_BUTTONENABLED,
     CONF_BUTTONNAME,
+    CONF_VERSION,
     CONFIG,
     CONTAINER_INFO_ALLINONE,
     DEFAULT_NAME,
@@ -57,6 +57,7 @@ from .const import (
     DOMAIN,
     MONITORED_CONDITIONS_LIST,
     PRECISION,
+    SERVICE_RELOAD,
 )
 from .helpers import DockerAPI
 
@@ -69,6 +70,7 @@ DOCKER_SCHEMA = vol.Schema(
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_PREFIX, default=""): cv.string,
         vol.Optional(CONF_URL, default=None): vol.Any(cv.string, None),
+        vol.Optional(CONF_VERSION, default="auto"): cv.string,
         vol.Optional(
             CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
         ): cv.positive_int,
@@ -93,6 +95,7 @@ DOCKER_SCHEMA = vol.Schema(
         vol.Optional(CONF_RETRY, default=DEFAULT_RETRY): cv.positive_int,
         vol.Optional(CONF_MEMORYCHANGE, default=100): cv.positive_int,
         vol.Optional(CONF_PRECISION_CPU, default=PRECISION): cv.positive_int,
+        vol.Optional(CONF_PRECISION_DISK_MB, default=PRECISION): cv.positive_int,
         vol.Optional(CONF_PRECISION_MEMORY_MB, default=PRECISION): cv.positive_int,
         vol.Optional(
             CONF_PRECISION_MEMORY_PERCENTAGE, default=PRECISION
@@ -190,6 +193,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if api:
             await api.destroy()
         raise ConfigEntryNotReady(f"Failed to setup {err}") from err
+
+    # Register an on-demand reload/refresh service. Calling it wakes every poll
+    # loop so fresh Docker data is fetched immediately instead of waiting for the
+    # next scan_interval.
+    async def async_handle_reload(call: ServiceCall) -> None:
+        for _name, data in hass.data.get(DOMAIN, {}).items():
+            api = data.get(API)
+            if api is not None:
+                api.request_refresh()
+
+    hass.services.async_register(DOMAIN, SERVICE_RELOAD, async_handle_reload)
 
     return True
 
