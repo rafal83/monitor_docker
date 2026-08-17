@@ -142,8 +142,8 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | rename_entity               | boolean        (Optional)  | If rename is enabled, it changes the name in HA Lovelace, not the entity name. Enable this setting to also rename the entity name (Default: False) |
 | sensorname                  | string         (Optional)  | Sensor string to format the name used in Home Assistant. Defaults to `{name} {sensor}`, where `{name}` is the container name and `{sensor}` is e.g. Memory, Status, Network speed Up |
 | switchname                  | string         (Optional)  | Switch string to format the name used in Home Assistant. Defaults to `{name}`, where `{name}` is the container name. |
-| switchenabled               | boolean / list (Optional)  | Enable/Disable the switch entity for containers (Default: `True` Enabled switch for all containers, `False`: Disabled switch for all containers). Or specify a list of containers for which to enable switch entities. |
-| buttonenabled               | boolean        (Optional)  | Enable/Disable the button entity for containers (Default: `False` Enabled button for all containers, `False`: Disabled button for all containers). Or specify a list of containers for which to enable button entities. |
+| switchenabled               | boolean / list (Optional)  | Create a switch entity per container, to start/stop it from Home Assistant (Default: `True`, all containers). Or specify a list of containers for which to create one. |
+| buttonenabled               | boolean        (Optional)  | Create a button entity per container, to restart it from Home Assistant (Default: `False`). Or specify a list of containers for which to create one. When `True`, also adds a "Restart stack" button per docker-compose/swarm stack that restarts every container in it (see "Container grouping" below). |
 | precision_cpu               | integer        (Optional)  | Precision of CPU usage percentage (Default: 2) |
 | precision_memory_mb         | integer        (Optional)  | Precision of memory usage in MB (Default: 2) |
 | precision_memory_percentage | integer        (Optional)  | Precision of memory usage in percentage (Default: 2) |
@@ -180,6 +180,14 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | pids                              | Current number of processes in the container | -     |
 | restart_count                     | Number of times Docker's restart policy has restarted the container | -     |
 | allinone                          | This is a special condition and when used, it will only create 1 sensor per container with all the monitored conditions as attribute value. NOTE: If you use this sensor, all other sensors are NOT created, just 1 sensor |-     |
+
+### Container grouping (docker-compose / swarm stacks)
+
+Containers that carry a `com.docker.compose.project` label (set automatically by `docker compose`) or `com.docker.stack.namespace` (Docker Swarm) are grouped together in Home Assistant's device list under a collapsible section for their stack, instead of sitting flat alongside every other container. Containers with neither label (started with plain `docker run`, or no compose project) stay directly under the host device, same as before this existed.
+
+Each stack also gets a lightweight "Stack" device carrying one **Restart stack** button (only created when `buttonenabled` allows it - see above), which restarts every container of that stack via the normal Docker API, equivalent to `docker compose restart`.
+
+This grouping is established when a container's device is first set up, which happens for the whole host during Home Assistant startup/integration reload. A container created or recreated afterward (e.g. by Watchtower, or the Install action below) still gets monitored immediately, but its device won't show up grouped under its stack until the next full reload/restart - a Home Assistant limitation for entities added outside the normal startup sequence, not something to configure around.
 
 ### Image updates
 
@@ -273,7 +281,7 @@ monitor_docker:
     ...
 ```  
 6. **Question:** Can create, delete or re-create a container be implemented in the integration?  
-    **Answer:** The used Docker library has no easy (and safe) way to handle such functionality. Please use *docker-compose* to handle such operations. If anybody can make this fully work in a safe way, I'll be happy to merge the PR  
+    **Answer:** Recreating with a new image is now possible through the `update` entity's Install button (see "Image updates" above) - it pulls the image and recreates the container from its own `docker inspect` config, with an automatic rollback if the new image fails to start. Read that section's caveats before relying on it, especially if your containers are managed by *docker-compose*: it doesn't re-read your compose file, so `docker compose pull && docker compose up -d` (or Portainer's stack redeploy, if you're connected through Portainer) remains the safer choice for anything compose-managed. Plain create/delete of arbitrary containers (not tied to an existing monitored one) is still not implemented.  
 7. **Question:** Can you add more security to a switch?  
     **Answer:** No, this isn't possible from the integration. You need to do this directly in Lovelace itself, within the card e.g. https://github.com/iantrich/restriction-card  
 8. **Question:** All the reported memory values are 0 (zero), can this be fixed in the integration?  
