@@ -11,6 +11,8 @@ DOMAIN = "monitor_docker"
 API = "api"
 CONFIG = "config"
 CONTAINER = "container"
+STACK = "stack"
+STACK_SUBENTRY_TYPE = "stack"
 
 CONF_CERTPATH = "certpath"
 CONF_CONTAINERS = "containers"

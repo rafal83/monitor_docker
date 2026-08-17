@@ -12,6 +12,7 @@ from homeassistant.components.button import ENTITY_ID_FORMAT, ButtonEntity
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import slugify
@@ -28,8 +29,9 @@ from .const import (
     CONTAINER_INFO_STATE,
     DOMAIN,
     SERVICE_RESTART,
+    STACK,
 )
-from .helpers import DockerContainerAPI, DockerContainerEntity
+from .helpers import DockerAPI, DockerContainerAPI, DockerContainerEntity
 
 
 SERVICE_RESTART_SCHEMA = vol.Schema({ATTR_NAME: cv.string, ATTR_SERVER: cv.string})
@@ -117,6 +119,27 @@ async def async_setup_platform(
     _LOGGER.debug("[%s]: Setting up button(s)", instance)
 
     buttons = []
+
+    # A new stack was just discovered (or this is the initial batch, which
+    # may already have several) - add its "restart stack" button(s). Only
+    # when buttons are enabled for everything, since a per-container allow
+    # list doesn't have a clear meaning for a whole-stack action.
+    if STACK in discovery_info:
+        stack_names = [discovery_info[STACK]]
+    elif CONTAINER not in discovery_info:
+        stack_names = api.get_stack_names()
+    else:
+        stack_names = []
+
+    if config[CONF_BUTTONENABLED] == True:
+        for stack in stack_names:
+            _LOGGER.debug("[%s] %s: Adding stack restart Button", instance, stack)
+            buttons.append(DockerStackRestartButton(api, instance, stack))
+
+    if STACK in discovery_info:
+        if buttons:
+            async_add_entities(buttons, True)
+        return True
 
     # We support add/re-add of a container
     if CONTAINER in discovery_info:
@@ -243,3 +266,48 @@ class DockerContainerButton(ButtonEntity, DockerContainerEntity):
         if state is not self._state:
             self._state = state
             self.async_schedule_update_ha_state()
+
+
+#################################################################
+class DockerStackRestartButton(ButtonEntity):
+    """Restart every container of a docker-compose/swarm stack at once."""
+
+    def __init__(self, api: DockerAPI, instance: str, stack: str):
+        self._api = api
+        self._instance = instance
+        self._stack = stack
+
+        self._attr_unique_id = ENTITY_ID_FORMAT.format(
+            slugify(f"{instance}_stack_{stack}_restart")
+        )
+        self._attr_name = f"{stack} Restart"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{instance}_stack_{stack}")},
+        )
+
+    @property
+    def should_poll(self) -> bool:
+        return False
+
+    @property
+    def icon(self) -> str:
+        return "mdi:restart"
+
+    async def async_press(self, **kwargs: Any) -> None:
+        for cname in self._api.get_stack_containers(self._stack):
+            container = self._api.get_container(cname)
+            if container:
+                _LOGGER.debug(
+                    "[%s] %s: Restarting container as part of stack '%s' restart",
+                    self._instance,
+                    cname,
+                    self._stack,
+                )
+                await container.restart()
+            else:
+                _LOGGER.error(
+                    "[%s] %s: Cannot restart, container not found (stack '%s' restart)",
+                    self._instance,
+                    cname,
+                    self._stack,
+                )

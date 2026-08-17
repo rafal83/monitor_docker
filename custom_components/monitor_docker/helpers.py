@@ -7,10 +7,12 @@ import os
 import ssl
 from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable
 
 import aiodocker
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
@@ -80,6 +82,8 @@ from .const import (
     LABEL_COMPOSE_PROJECT,
     LABEL_SWARM_STACK,
     PRECISION,
+    STACK,
+    STACK_SUBENTRY_TYPE,
 )
 
 VERSION = "1.20"
@@ -104,16 +108,20 @@ class DockerAPI:
     """Docker API abstraction allowing multiple Docker instances beeing monitored."""
 
     def __init__(
-        self, hass: HomeAssistant, config: ConfigType, entry_id: str | None = None
+        self,
+        hass: HomeAssistant,
+        config: ConfigType,
+        config_entry: ConfigEntry | None = None,
     ):
         """Initialize the Docker API."""
 
         self._hass = hass
         self._config = config
-        self._entry_id = entry_id
+        self._config_entry = config_entry
+        self._entry_id = config_entry.entry_id if config_entry else None
         self._instance: str = config[CONF_NAME]
         self._containers: dict[str, DockerContainerAPI] = {}
-        self._stack_devices: set[str] = set()
+        self._stack_subentries: dict[str, str] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._info: dict[str, Any] = {}
         self._event_create: dict[str, int] = {}
@@ -318,8 +326,9 @@ class DockerAPI:
             )
             await self._containers[cname].init()
 
-            # Ensure a stack device exists before entities reference it as via_device
-            self.get_stack_device_id(cname)
+            # Register the device (with its stack subentry, if any) before
+            # load() creates entities that reference these same identifiers.
+            self.register_container_device(cname)
 
         self._hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._monitor_stop)
 
@@ -725,8 +734,10 @@ class DockerAPI:
         result = await self._containers[cname]._initGetContainer()
 
         if result:
-            # Ensure a stack device exists before entities reference it as via_device
-            self.get_stack_device_id(cname)
+            # Register the device (with its stack subentry, if any) before
+            # load_platform() creates entities that reference these same
+            # identifiers.
+            new_stack = self.register_container_device(cname)
 
             # Lets wait 1 second before we try to create sensors/switches/buttons
             await asyncio.sleep(1)
@@ -737,6 +748,15 @@ class DockerAPI:
                     component,
                     DOMAIN,
                     {CONF_NAME: self._instance, CONTAINER: cname},
+                    self._config,
+                )
+
+            if new_stack:
+                load_platform(
+                    self._hass,
+                    "button",
+                    DOMAIN,
+                    {CONF_NAME: self._instance, STACK: new_stack},
                     self._config,
                 )
         else:
@@ -963,34 +983,106 @@ class DockerAPI:
         return self._config[CONF_URL]
 
     #############################################################
-    def get_stack_device_id(self, cname: str) -> str | None:
-        """Return the (DOMAIN, id) via_device target for a container.
+    def _ensure_stack_subentry(self, stack: str) -> str | None:
+        """Ensure a config subentry exists for a docker-compose/swarm stack.
 
-        Containers that belong to a docker-compose/swarm stack are grouped
-        under a device for that stack; others attach directly to the host.
+        Also registers a lightweight device for the stack itself (as a
+        sibling of its containers, not a via_device parent), which is what
+        the "restart stack" button attaches to.
+
+        Returns the subentry_id, or None if there is no entry to attach to
+        (e.g. the transient DockerAPI instance used to test a connection
+        during config flow setup).
         """
+        if not self._config_entry:
+            return None
+
+        if stack in self._stack_subentries:
+            return self._stack_subentries[stack]
+
+        subentry_id = None
+        for subentry in self._config_entry.subentries.values():
+            if subentry.subentry_type == STACK_SUBENTRY_TYPE and subentry.unique_id == stack:
+                subentry_id = subentry.subentry_id
+                break
+
+        if subentry_id is None:
+            subentry = ConfigSubentry(
+                data=MappingProxyType({}),
+                subentry_type=STACK_SUBENTRY_TYPE,
+                title=stack,
+                unique_id=stack,
+            )
+            self._hass.config_entries.async_add_subentry(self._config_entry, subentry)
+            subentry_id = subentry.subentry_id
+
+        self._stack_subentries[stack] = subentry_id
+
+        device_registry = dr.async_get(self._hass)
+        device_registry.async_get_or_create(
+            config_entry_id=self._entry_id,
+            config_subentry_id=subentry_id,
+            identifiers={(DOMAIN, f"{self._instance}_stack_{stack}")},
+            manufacturer="Docker Compose",
+            name=stack,
+            model="Stack",
+            via_device=(DOMAIN, f"{self._instance}_{self._config[CONF_URL]}"),
+        )
+
+        return subentry_id
+
+    #############################################################
+    def register_container_device(self, cname: str) -> str | None:
+        """(Re-)register a container's device with its stack's subentry, if any.
+
+        Must run before load_platform() creates the container's entities, so
+        the device already exists (with the right config_subentry_id) by the
+        time the entities' own DeviceInfo references the same identifiers -
+        DeviceInfo can't carry config_subentry_id itself.
+
+        Returns the stack name if this call is the one that just created a
+        new stack (so the caller can spin up its "restart stack" button),
+        None otherwise (no stack, or the stack already existed).
+        """
+        if not self._entry_id:
+            return None
+
         container = self._containers.get(cname)
         labels = container.get_labels() if container else {}
         stack = labels.get(LABEL_COMPOSE_PROJECT) or labels.get(LABEL_SWARM_STACK)
+        is_new_stack = bool(stack) and stack not in self._stack_subentries
+        subentry_id = self._ensure_stack_subentry(stack) if stack else None
 
-        if not stack:
-            return None
+        device_registry = dr.async_get(self._hass)
+        device_registry.async_get_or_create(
+            config_entry_id=self._entry_id,
+            config_subentry_id=subentry_id,
+            identifiers={(DOMAIN, f"{self._instance}_container_{cname}")},
+            manufacturer="Docker",
+            name=cname,
+            model="Docker Container",
+            entry_type=dr.DeviceEntryType.SERVICE,
+            via_device=(DOMAIN, f"{self._instance}_{self._config[CONF_URL]}"),
+        )
 
-        stack_id = f"{self._instance}_stack_{stack}"
+        return stack if is_new_stack else None
 
-        if stack_id not in self._stack_devices and self._entry_id:
-            device_registry = dr.async_get(self._hass)
-            device_registry.async_get_or_create(
-                config_entry_id=self._entry_id,
-                identifiers={(DOMAIN, stack_id)},
-                manufacturer="Docker Compose",
-                name=stack,
-                model="Stack",
-                via_device=(DOMAIN, f"{self._instance}_{self._config[CONF_URL]}"),
-            )
-            self._stack_devices.add(stack_id)
+    #############################################################
+    def get_stack_names(self) -> list[str]:
+        """Return the names of all stacks discovered so far."""
+        return list(self._stack_subentries.keys())
 
-        return stack_id
+    #############################################################
+    def get_stack_containers(self, stack: str) -> list[str]:
+        """Return the names of the containers belonging to a stack."""
+        result = []
+        for cname, container in self._containers.items():
+            labels = container.get_labels() if container else {}
+            if labels.get(LABEL_COMPOSE_PROJECT) == stack or labels.get(
+                LABEL_SWARM_STACK
+            ) == stack:
+                result.append(cname)
+        return result
 
     #############################################################
     def request_refresh(self) -> None:
@@ -1881,13 +1973,13 @@ class DockerContainerEntity(Entity):
         self, container: DockerContainerAPI, instance: str, cname: str
     ) -> None:
         """Initialize the base for Container entities."""
-        labels = container.get_labels()
-        stack = labels.get(LABEL_COMPOSE_PROJECT) or labels.get(LABEL_SWARM_STACK)
-        via_device = (
-            (DOMAIN, f"{instance}_stack_{stack}")
-            if stack
-            else (DOMAIN, f"{instance}_{container._config[CONF_URL]}")
-        )
+        # Grouping under the container's stack (if any) is done via
+        # config_subentry_id when the device is registered in
+        # DockerAPI.register_container_device() - DeviceInfo can't carry
+        # that itself. via_device here always points at the host; entities
+        # created before register_container_device() has run (it shouldn't
+        # happen, but if it does) still resolve to a real device either way.
+        via_device = (DOMAIN, f"{instance}_{container._config[CONF_URL]}")
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{instance}_container_{cname}")},
             name=cname,

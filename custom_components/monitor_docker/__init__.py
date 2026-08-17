@@ -161,7 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api = None
 
     try:
-        api = DockerAPI(hass, entry.data, entry.entry_id)
+        api = DockerAPI(hass, entry.data, entry)
         await api.init()
 
         # Pre-register docker instance, preventing warning in initial setup
