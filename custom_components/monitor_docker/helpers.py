@@ -12,6 +12,7 @@ from typing import Any, Callable
 import aiodocker
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 import homeassistant.util.dt as dt_util
@@ -71,6 +72,8 @@ from .const import (
     DOCKER_STATS_MEMORY,
     DOCKER_STATS_MEMORY_PERCENTAGE,
     DOMAIN,
+    LABEL_COMPOSE_PROJECT,
+    LABEL_SWARM_STACK,
     PRECISION,
 )
 
@@ -95,13 +98,17 @@ def toMB(value: float, precision: int = PRECISION) -> float:
 class DockerAPI:
     """Docker API abstraction allowing multiple Docker instances beeing monitored."""
 
-    def __init__(self, hass: HomeAssistant, config: ConfigType):
+    def __init__(
+        self, hass: HomeAssistant, config: ConfigType, entry_id: str | None = None
+    ):
         """Initialize the Docker API."""
 
         self._hass = hass
         self._config = config
+        self._entry_id = entry_id
         self._instance: str = config[CONF_NAME]
         self._containers: dict[str, DockerContainerAPI] = {}
+        self._stack_devices: set[str] = set()
         self._tasks: dict[str, asyncio.Task] = {}
         self._info: dict[str, Any] = {}
         self._event_create: dict[str, int] = {}
@@ -295,6 +302,9 @@ class DockerAPI:
                 cname,
             )
             await self._containers[cname].init()
+
+            # Ensure a stack device exists before entities reference it as via_device
+            self.get_stack_device_id(cname)
 
         self._hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._monitor_stop)
 
@@ -700,6 +710,9 @@ class DockerAPI:
         result = await self._containers[cname]._initGetContainer()
 
         if result:
+            # Ensure a stack device exists before entities reference it as via_device
+            self.get_stack_device_id(cname)
+
             # Lets wait 1 second before we try to create sensors/switches/buttons
             await asyncio.sleep(1)
 
@@ -935,6 +948,36 @@ class DockerAPI:
         return self._config[CONF_URL]
 
     #############################################################
+    def get_stack_device_id(self, cname: str) -> str | None:
+        """Return the (DOMAIN, id) via_device target for a container.
+
+        Containers that belong to a docker-compose/swarm stack are grouped
+        under a device for that stack; others attach directly to the host.
+        """
+        container = self._containers.get(cname)
+        labels = container.get_labels() if container else {}
+        stack = labels.get(LABEL_COMPOSE_PROJECT) or labels.get(LABEL_SWARM_STACK)
+
+        if not stack:
+            return None
+
+        stack_id = f"{self._instance}_stack_{stack}"
+
+        if stack_id not in self._stack_devices and self._entry_id:
+            device_registry = dr.async_get(self._hass)
+            device_registry.async_get_or_create(
+                config_entry_id=self._entry_id,
+                identifiers={(DOMAIN, stack_id)},
+                manufacturer="Docker Compose",
+                name=stack,
+                model="Stack",
+                via_device=(DOMAIN, f"{self._instance}_{self._config[CONF_URL]}"),
+            )
+            self._stack_devices.add(stack_id)
+
+        return stack_id
+
+    #############################################################
     def request_refresh(self) -> None:
         """Wake the info loop and every container loop to fetch immediately."""
         _LOGGER.debug("[%s]: On-demand refresh requested", self._instance)
@@ -991,6 +1034,20 @@ class DockerContainerAPI:
 
         self._info: dict[str, Any] = {}
         self._stats: dict[str, Any] = {}
+        self._labels: dict[str, str] = {}
+
+    #############################################################
+    def get_labels(self) -> dict[str, str]:
+        return self._labels
+
+    #############################################################
+    async def _fetch_labels(self) -> None:
+        """Fetch the container's Docker labels (used for stack grouping)."""
+        try:
+            raw = await self._container.show()
+            self._labels = (raw.get("Config") or {}).get("Labels") or {}
+        except Exception:
+            self._labels = {}
 
     async def init(self):
         # During start-up we will wait on container attachment,
@@ -1012,6 +1069,8 @@ class DockerContainerAPI:
                     exc_info=exc_info,
                 )
                 return  # Could be necessary to do something more here
+
+            await self._fetch_labels()
 
             self._task = asyncio.create_task(self._run())
 
@@ -1041,6 +1100,8 @@ class DockerContainerAPI:
                 exc_info=exc_info,
             )
             return False
+
+        await self._fetch_labels()
 
         self._task = asyncio.create_task(self._run())
 
@@ -1792,12 +1853,18 @@ class DockerContainerEntity(Entity):
         self, container: DockerContainerAPI, instance: str, cname: str
     ) -> None:
         """Initialize the base for Container entities."""
-        container_info = container.get_info()
+        labels = container.get_labels()
+        stack = labels.get(LABEL_COMPOSE_PROJECT) or labels.get(LABEL_SWARM_STACK)
+        via_device = (
+            (DOMAIN, f"{instance}_stack_{stack}")
+            if stack
+            else (DOMAIN, f"{instance}_{container._config[CONF_URL]}")
+        )
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{instance}_container_{cname}")},
             name=cname,
             manufacturer="Docker",
             model="Docker Container",
             entry_type=DeviceEntryType.SERVICE,
-            via_device=(DOMAIN, f"{instance}_{container._config[CONF_URL]}"),
+            via_device=via_device,
         )

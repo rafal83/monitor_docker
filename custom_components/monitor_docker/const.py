@@ -35,6 +35,9 @@ CONF_BUTTONENABLED = "buttonenabled"
 CONF_BUTTONNAME = "buttonname"
 CONF_VERSION = "version"
 
+LABEL_COMPOSE_PROJECT = "com.docker.compose.project"
+LABEL_SWARM_STACK = "com.docker.stack.namespace"
+
 DEFAULT_NAME = "Docker"
 DEFAULT_RETRY = 60
 DEFAULT_SCAN_INTERVAL = 10
