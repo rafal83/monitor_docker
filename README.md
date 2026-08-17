@@ -144,7 +144,9 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | switchname                  | string         (Optional)  | Switch string to format the name used in Home Assistant. Defaults to `{name}`, where `{name}` is the container name. |
 | switchenabled               | boolean / list (Optional)  | Create a switch entity per container, to start/stop it from Home Assistant (Default: `True`, all containers). Or specify a list of containers for which to create one. |
 | buttonenabled               | boolean        (Optional)  | Create a button entity per container, to restart it from Home Assistant (Default: `False`). Or specify a list of containers for which to create one. When `True`, also adds a "Restart stack" button per docker-compose/swarm stack that restarts every container in it (see "Container grouping" below). |
+| memorychange                | integer        (Optional)  | Percentage change in memory usage between two polls above which a reading is treated as a spike and the previous value is reported instead for that poll. Set below 100 to enable this filtering (Default: 100, which disables it) |
 | precision_cpu               | integer        (Optional)  | Precision of CPU usage percentage (Default: 2) |
+| precision_disk_mb           | integer        (Optional)  | Precision of disk read/write in MB (Default: 2) |
 | precision_memory_mb         | integer        (Optional)  | Precision of memory usage in MB (Default: 2) |
 | precision_memory_percentage | integer        (Optional)  | Precision of memory usage in percentage (Default: 2) |
 | precision_network_kb        | integer        (Optional)  | Precision of network bandwidth in kB (Default: 2) |
@@ -167,6 +169,7 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | health                            | Container health if available   | -     |
 | uptime                            | Container start time            | -     |
 | image                             | Container image                 | -     |
+| image_hash                        | Container image hash/digest     | -     |
 | cpu_percentage                    | CPU usage. The CPU usage depends on the number of CPU cores, e.g. if you have 8 cores, this value can have a maximum of 800% | %     |
 | 1cpu_percentage                   | CPU Usage, between 0-100%       | %     |
 | memory                            | Memory usage                    | MB    |
