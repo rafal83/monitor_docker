@@ -126,7 +126,8 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | Parameter                   | Type                       | Description                                                           |
 | --------------------------- | -------------------------- | --------------------------------------------------------------------- |
 | name                        | string         (Required)  | Client name of Docker daemon. Defaults to `Docker`.                   |
-| url                         | string         (Optional)  | Host URL of Docker daemon. Defaults to `unix://var/run/docker.sock`. Remote Docker daemon via TCP socket is also supported, use e.g. `http://ip:2375`. Do NOT add a slash add the end, this will invalidate the URL. For TLS support see the Q&A section. SSH is not supported. |
+| url                         | string         (Optional)  | Host URL of Docker daemon. Defaults to `unix://var/run/docker.sock`. Remote Docker daemon via TCP socket is also supported, use e.g. `http://ip:2375`. Do NOT add a slash add the end, this will invalidate the URL. For TLS support see the Q&A section. `ssh://` is also supported. |
+| version                     | string         (Optional)  | Docker API version to use. Defaults to `auto`, only change this if you need to pin a specific Docker API version. |
 | scan_interval               | time_period    (Optional)  | Update interval. Defaults to 10 seconds.                              |
 | retry                       | time_period    (Optional)  | Retry interval when a TCP error is detected. Defaults to 60 seconds.  |
 | certpath                    | string         (Optional)  | If a TCP socket is used, you can define your Docker certificate path, forcing Monitor Docker to enable TLS. The filenames must be `ca.pem`, `cert.pem` and `key.pem`|

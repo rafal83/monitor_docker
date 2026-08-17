@@ -26,6 +26,7 @@
                 "data": {
                     "name": "Name of Docker daemon",
                     "url": "Host URL of Docker daemon",
+                    "version": "Docker API version (leave as 'auto' unless you need to pin a specific version)",
                     "scan_interval": "Update interval (seconds)",
                     "certpath": "If a TCP socket is used, you can define your Docker certificate path, forcing Monitor Docker to enable TLS. The filenames must be cert.pem and key.pem",
                     "retry": "Retry interval (seconds)"

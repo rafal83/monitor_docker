@@ -18,5 +18,69 @@
             },
             "name": "Redémarrer"
         }
+    },
+    "config": {
+        "step": {
+            "user": {
+                "description": "Configurer une connexion à un hôte Docker",
+                "data": {
+                    "name": "Nom du démon Docker",
+                    "url": "URL de l'hôte du démon Docker",
+                    "version": "Version de l'API Docker (laisser 'auto' sauf si vous devez figer une version spécifique)",
+                    "scan_interval": "Intervalle de mise à jour (secondes)",
+                    "certpath": "Si un socket TCP est utilisé, vous pouvez définir le chemin de votre certificat Docker, ce qui force Monitor Docker à activer TLS. Les fichiers doivent se nommer cert.pem et key.pem",
+                    "retry": "Intervalle de nouvelle tentative (secondes)"
+                }
+            },
+            "reconfigure": {
+                "description": "Reconfigurer les paramètres du démon Docker",
+                "menu_options": {
+                    "containers": "Containers à surveiller",
+                    "conditions": "Conditions à surveiller"
+                }
+            },
+            "containers": {
+                "description": "Sélectionner les containers à surveiller",
+                "data": {
+                    "containers": "Liste des containers à surveiller (laisser vide pour tous les inclure, y compris les nouveaux)",
+                    "containers_exclude": "Liste des containers à exclure de la surveillance, lorsque tous les containers sont inclus"
+                }
+            },
+            "containers_rename": {
+                "description": "Choisir un nom d'affichage pour chaque container",
+                "data": {
+                    "rename_entity": "Si un renommage est effectué, cela modifie aussi le nom de l'entité"
+                }
+            },
+            "conditions": {
+                "description": "Configurer une connexion à un hôte Docker",
+                "data": {
+                    "monitored_docker_conditions": "Conditions du contrôleur à surveiller",
+                    "monitored_container_conditions": "Conditions de chaque container à surveiller",
+                    "switchenabled": "Activer/Désactiver l'entité switch pour les containers",
+                    "buttonenabled": "Activer/Désactiver l'entité bouton pour les containers",
+                    "memorychange": "Variation d'utilisation mémoire avant alerte",
+                    "precision_cpu": "Précision du pourcentage d'utilisation CPU",
+                    "precision_memory_mb": "Précision de l'utilisation mémoire en Mo",
+                    "precision_memory_percentage": "Précision de l'utilisation mémoire en pourcentage",
+                    "precision_network_kb": "Précision de la bande passante réseau en Ko",
+                    "precision_network_mb": "Précision de l'utilisation réseau en Mo"
+                }
+            }
+        },
+        "error": {
+            "name_exists": "Ce nom existe déjà",
+            "invalid_connection": "Impossible de se connecter à Docker"
+        },
+        "abort": {
+            "reauth_successful": "Réauthentification réussie",
+            "reconfigure_successful": "Reconfiguration réussie"
+        }
+    },
+    "issues": {
+        "remove_configuration_yaml": {
+            "description": "Vérifiez d'abord que les paramètres de votre intégration issus de configuration.yaml sont toujours intacts (le renommage n'est plus disponible). Les paramètres explicites peuvent être consultés et modifiés dans le menu Reconfigurer de chaque instance de l'intégration.\nLe renommage peut être fait au niveau de l'appareil ou de l'entité dans l'interface.\nSupprimez ensuite les paramètres de {domain} {integration_title} de configuration.yaml pour ne plus voir ce message.",
+            "title": "{integration_title} configuré manuellement n'est plus utilisé"
+        }
     }
 }
