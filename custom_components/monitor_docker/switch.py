@@ -29,7 +29,12 @@ from .const import (
     DOMAIN,
     SERVICE_RESTART,
 )
-from .helpers import DockerAPI, DockerContainerAPI, DockerContainerEntity
+from .helpers import (
+    DockerAPI,
+    DockerContainerAPI,
+    DockerContainerEntity,
+    add_entities_by_subentry,
+)
 
 
 SERVICE_RESTART_SCHEMA = vol.Schema({ATTR_NAME: cv.string, ATTR_SERVER: cv.string})
@@ -139,10 +144,13 @@ async def async_setup_platform(
                 _LOGGER.debug("[%s] %s: Adding component Switch", instance, cname)
 
                 switches.append(
-                    DockerContainerSwitch(
-                        api.get_container(cname),
-                        instance=instance,
-                        cname=cname,
+                    (
+                        DockerContainerSwitch(
+                            api.get_container(cname),
+                            instance=instance,
+                            cname=cname,
+                        ),
+                        cname,
                     )
                 )
             else:
@@ -152,7 +160,13 @@ async def async_setup_platform(
         _LOGGER.info("[%s]: No containers set-up", instance)
         return False
 
-    async_add_entities(switches, True)
+    add_entities_by_subentry(
+        async_add_entities,
+        [
+            (entity, api.get_container_subentry_id(cname))
+            for entity, cname in switches
+        ],
+    )
 
     # platform = entity_platform.current_platform.get()
     # platform.async_register_entity_service(SERVICE_RESTART, {}, "async_restart")

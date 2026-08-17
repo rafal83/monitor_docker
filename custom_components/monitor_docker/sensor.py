@@ -46,7 +46,12 @@ from .const import (
     DOCKER_MONITOR_LIST,
     DOMAIN,
 )
-from .helpers import DockerAPI, DockerContainerAPI, DockerContainerEntity
+from .helpers import (
+    DockerAPI,
+    DockerContainerAPI,
+    DockerContainerEntity,
+    add_entities_by_subentry,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,9 +94,10 @@ async def async_setup_platform(
 
     _LOGGER.debug("[%s]: Setting up sensor(s)", instance)
 
-    sensors = []
-    sensors: list[DockerSensor | DockerContainerSensor] = [
-        DockerSensor(api, instance, DOCKER_MONITOR_LIST[variable])
+    # (entity, cname) pairs - cname is None for host-level sensors, used at
+    # the end to group entities by their container's stack subentry.
+    sensors: list[tuple[DockerSensor | DockerContainerSensor, str | None]] = [
+        (DockerSensor(api, instance, DOCKER_MONITOR_LIST[variable]), None)
         for variable in config[CONF_MONITORED_CONDITIONS]
         if variable in DOCKER_MONITOR_LIST
         if CONTAINER not in discovery_info
@@ -147,15 +153,20 @@ async def async_setup_platform(
                     ):
                         monitor_conditions += [variable]
 
-                sensors += [
-                    DockerContainerSensor(
-                        capi,
-                        instance=instance,
-                        cname=cname,
-                        description=CONTAINER_MONITOR_LIST[CONTAINER_INFO_ALLINONE],
-                        condition_list=monitor_conditions,
+                sensors.append(
+                    (
+                        DockerContainerSensor(
+                            capi,
+                            instance=instance,
+                            cname=cname,
+                            description=CONTAINER_MONITOR_LIST[
+                                CONTAINER_INFO_ALLINONE
+                            ],
+                            condition_list=monitor_conditions,
+                        ),
+                        cname,
                     )
-                ]
+                )
             else:
                 for variable in config[CONF_MONITORED_CONDITIONS]:
                     if variable in CONTAINER_MONITOR_LIST and (
@@ -165,14 +176,17 @@ async def async_setup_platform(
                             and variable not in CONTAINER_MONITOR_NETWORK_LIST
                         )
                     ):
-                        sensors += [
-                            DockerContainerSensor(
-                                capi,
-                                instance=instance,
-                                cname=cname,
-                                description=CONTAINER_MONITOR_LIST[variable],
+                        sensors.append(
+                            (
+                                DockerContainerSensor(
+                                    capi,
+                                    instance=instance,
+                                    cname=cname,
+                                    description=CONTAINER_MONITOR_LIST[variable],
+                                ),
+                                cname,
                             )
-                        ]
+                        )
 
     # Restore state, required for destroy/create container
     if allinone:
@@ -180,7 +194,13 @@ async def async_setup_platform(
     if stateremoved:
         config[CONF_MONITORED_CONDITIONS].append(CONTAINER_INFO_STATE)
 
-    async_add_entities(sensors, True)
+    add_entities_by_subentry(
+        async_add_entities,
+        [
+            (entity, api.get_container_subentry_id(cname) if cname else None)
+            for entity, cname in sensors
+        ],
+    )
 
     return True
 

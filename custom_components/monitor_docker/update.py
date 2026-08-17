@@ -26,7 +26,7 @@ from .const import (
     CONTAINER,
     DOMAIN,
 )
-from .helpers import DockerContainerAPI, DockerContainerEntity
+from .helpers import DockerContainerAPI, DockerContainerEntity, add_entities_by_subentry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,17 +88,20 @@ async def async_setup_platform(
         if includeContainer:
             _LOGGER.debug("[%s] %s: Adding component Update", instance, cname)
             entities.append(
-                DockerContainerUpdate(
-                    api.get_container(cname),
-                    instance=instance,
-                    cname=cname,
+                (
+                    DockerContainerUpdate(
+                        api.get_container(cname),
+                        instance=instance,
+                        cname=cname,
+                    ),
+                    api.get_container_subentry_id(cname),
                 )
             )
 
     if not entities:
         return False
 
-    async_add_entities(entities, True)
+    add_entities_by_subentry(async_add_entities, entities)
 
     return True
 

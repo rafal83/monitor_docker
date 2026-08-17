@@ -31,7 +31,12 @@ from .const import (
     SERVICE_RESTART,
     STACK,
 )
-from .helpers import DockerAPI, DockerContainerAPI, DockerContainerEntity
+from .helpers import (
+    DockerAPI,
+    DockerContainerAPI,
+    DockerContainerEntity,
+    add_entities_by_subentry,
+)
 
 
 SERVICE_RESTART_SCHEMA = vol.Schema({ATTR_NAME: cv.string, ATTR_SERVER: cv.string})
@@ -134,11 +139,16 @@ async def async_setup_platform(
     if config[CONF_BUTTONENABLED] == True:
         for stack in stack_names:
             _LOGGER.debug("[%s] %s: Adding stack restart Button", instance, stack)
-            buttons.append(DockerStackRestartButton(api, instance, stack))
+            buttons.append(
+                (
+                    DockerStackRestartButton(api, instance, stack),
+                    api.get_stack_subentry_id(stack),
+                )
+            )
 
     if STACK in discovery_info:
         if buttons:
-            async_add_entities(buttons, True)
+            add_entities_by_subentry(async_add_entities, buttons)
         return True
 
     # We support add/re-add of a container
@@ -163,10 +173,13 @@ async def async_setup_platform(
                 _LOGGER.debug("[%s] %s: Adding component Button", instance, cname)
 
                 buttons.append(
-                    DockerContainerButton(
-                        api.get_container(cname),
-                        instance=instance,
-                        cname=cname,
+                    (
+                        DockerContainerButton(
+                            api.get_container(cname),
+                            instance=instance,
+                            cname=cname,
+                        ),
+                        api.get_container_subentry_id(cname),
                     )
                 )
             else:
@@ -176,7 +189,7 @@ async def async_setup_platform(
         _LOGGER.info("[%s]: No containers set-up", instance)
         return False
 
-    async_add_entities(buttons, True)
+    add_entities_by_subentry(async_add_entities, buttons)
 
     # platform = entity_platform.current_platform.get()
     # platform.async_register_entity_service(SERVICE_RESTART, {}, "async_restart")

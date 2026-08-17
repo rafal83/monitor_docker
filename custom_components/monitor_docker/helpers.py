@@ -107,6 +107,38 @@ def toMB(value: float, precision: int = PRECISION) -> float:
     return round(value / (1024**2), precision)
 
 
+def add_entities_by_subentry(
+    async_add_entities: Callable[..., None],
+    entities: list[tuple[Any, str | None]],
+) -> None:
+    """Add entities grouped by subentry_id (possibly None for "no stack").
+
+    async_add_entities() takes config_subentry_id as one parameter for the
+    whole call rather than per-entity, and passing entities without it
+    doesn't leave a device's existing subentry alone - it's treated as an
+    explicit "no subentry", clearing whatever DockerAPI.register_
+    container_device() already set on the device the moment any entity for
+    it is added. So entities must be grouped and added per subentry, one
+    call per group, instead of one call for a mixed batch.
+    """
+    groups: dict[str | None, list[Any]] = {}
+    for entity, subentry_id in entities:
+        groups.setdefault(subentry_id, []).append(entity)
+
+    for subentry_id, group in groups.items():
+        try:
+            async_add_entities(group, True, config_subentry_id=subentry_id)
+        except TypeError:
+            # Containers added dynamically (via the discovery-based
+            # load_platform(), for newly created containers) are handed the
+            # older AddEntitiesCallback, which has no config_subentry_id
+            # parameter at all. Add them anyway - the device just won't be
+            # grouped under its stack's subentry until the next full setup
+            # (e.g. a Home Assistant restart), which goes through the
+            # config-entry-based path instead.
+            async_add_entities(group, True)
+
+
 #################################################################
 class DockerAPI:
     """Docker API abstraction allowing multiple Docker instances beeing monitored."""
@@ -1191,6 +1223,19 @@ class DockerAPI:
             ) == stack:
                 result.append(cname)
         return result
+
+    #############################################################
+    def get_stack_subentry_id(self, stack: str) -> str | None:
+        """Return the subentry_id already assigned to a stack, if any."""
+        return self._stack_subentries.get(stack)
+
+    #############################################################
+    def get_container_subentry_id(self, cname: str) -> str | None:
+        """Return the subentry_id of a container's stack, if it has one."""
+        container = self._containers.get(cname)
+        labels = container.get_labels() if container else {}
+        stack = labels.get(LABEL_COMPOSE_PROJECT) or labels.get(LABEL_SWARM_STACK)
+        return self._stack_subentries.get(stack) if stack else None
 
     #############################################################
     def request_refresh(self) -> None:
