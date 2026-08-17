@@ -61,6 +61,7 @@
                     "buttonenabled": "Enable/Disable the button entity for containers",
                     "memorychange": "Change of memory usage before alerting",
                     "precision_cpu": "Precision of CPU usage percentage",
+                    "precision_disk_mb": "Precision of disk read/write in MB",
                     "precision_memory_mb": "Precision of memory usage in MB",
                     "precision_memory_percentage": "Precision of memory usage in percentage",
                     "precision_network_kb": "Precision of network bandwidth in kB",

@@ -78,6 +78,7 @@ CONTAINER_INFO_NETWORK_AVAILABLE = "network_available"
 CONTAINER_INFO_UPTIME = "uptime"
 CONTAINER_INFO_IMAGE = "image"
 CONTAINER_INFO_IMAGE_HASH = "image_hash"
+CONTAINER_INFO_RESTART_COUNT = "restart_count"
 CONTAINER_STATS_CPU_PERCENTAGE = "cpu_percentage"
 CONTAINER_STATS_1CPU_PERCENTAGE = "1cpu_percentage"
 CONTAINER_STATS_MEMORY = "memory"
@@ -86,6 +87,9 @@ CONTAINER_STATS_NETWORK_SPEED_UP = "network_speed_up"
 CONTAINER_STATS_NETWORK_SPEED_DOWN = "network_speed_down"
 CONTAINER_STATS_NETWORK_TOTAL_UP = "network_total_up"
 CONTAINER_STATS_NETWORK_TOTAL_DOWN = "network_total_down"
+CONTAINER_STATS_DISK_READ = "disk_read"
+CONTAINER_STATS_DISK_WRITE = "disk_write"
+CONTAINER_STATS_PIDS = "pids"
 
 CONTAINER_PRE_SELECTION = [
     CONTAINER_INFO_STATUS,
@@ -189,6 +193,12 @@ CONTAINER_MONITOR_LIST = {
         name="Image Hash",
         icon="mdi:pound-box-outline",
     ),
+    CONTAINER_INFO_RESTART_COUNT: SensorEntityDescription(
+        key=CONTAINER_INFO_RESTART_COUNT,
+        name="Restart Count",
+        icon="mdi:restart",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
     CONTAINER_STATS_CPU_PERCENTAGE: SensorEntityDescription(
         key=CONTAINER_STATS_CPU_PERCENTAGE,
         name="CPU",
@@ -244,6 +254,28 @@ CONTAINER_MONITOR_LIST = {
         native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
         icon="mdi:download",
         state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    CONTAINER_STATS_DISK_READ: SensorEntityDescription(
+        key=CONTAINER_STATS_DISK_READ,
+        name="Disk Read",
+        native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
+        icon="mdi:harddisk",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    CONTAINER_STATS_DISK_WRITE: SensorEntityDescription(
+        key=CONTAINER_STATS_DISK_WRITE,
+        name="Disk Write",
+        native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
+        icon="mdi:harddisk",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    CONTAINER_STATS_PIDS: SensorEntityDescription(
+        key=CONTAINER_STATS_PIDS,
+        name="PIDs",
+        icon="mdi:sitemap-outline",
+        state_class=SensorStateClass.MEASUREMENT,
     ),
     CONTAINER_INFO_ALLINONE: SensorEntityDescription(
         key=CONTAINER_INFO_ALLINONE,

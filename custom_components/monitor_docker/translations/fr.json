@@ -61,6 +61,7 @@
                     "buttonenabled": "Activer/Désactiver l'entité bouton pour les containers",
                     "memorychange": "Variation d'utilisation mémoire avant alerte",
                     "precision_cpu": "Précision du pourcentage d'utilisation CPU",
+                    "precision_disk_mb": "Précision de la lecture/écriture disque en Mo",
                     "precision_memory_mb": "Précision de l'utilisation mémoire en Mo",
                     "precision_memory_percentage": "Précision de l'utilisation mémoire en pourcentage",
                     "precision_network_kb": "Précision de la bande passante réseau en Ko",

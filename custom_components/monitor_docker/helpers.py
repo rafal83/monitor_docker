@@ -50,17 +50,21 @@ from .const import (
     CONTAINER_INFO_IMAGE,
     CONTAINER_INFO_IMAGE_HASH,
     CONTAINER_INFO_NETWORK_AVAILABLE,
+    CONTAINER_INFO_RESTART_COUNT,
     CONTAINER_INFO_STATE,
     CONTAINER_INFO_STATUS,
     CONTAINER_INFO_UPTIME,
     CONTAINER_STATS_1CPU_PERCENTAGE,
     CONTAINER_STATS_CPU_PERCENTAGE,
+    CONTAINER_STATS_DISK_READ,
+    CONTAINER_STATS_DISK_WRITE,
     CONTAINER_STATS_MEMORY,
     CONTAINER_STATS_MEMORY_PERCENTAGE,
     CONTAINER_STATS_NETWORK_SPEED_DOWN,
     CONTAINER_STATS_NETWORK_SPEED_UP,
     CONTAINER_STATS_NETWORK_TOTAL_DOWN,
     CONTAINER_STATS_NETWORK_TOTAL_UP,
+    CONTAINER_STATS_PIDS,
     DOCKER_INFO_CONTAINER_PAUSED,
     DOCKER_INFO_CONTAINER_RUNNING,
     DOCKER_INFO_CONTAINER_STOPPED,
@@ -1240,6 +1244,7 @@ class DockerContainerAPI:
         self._info[CONTAINER_INFO_STATE] = raw["State"]["Status"]
         self._info[CONTAINER_INFO_IMAGE] = raw["Config"]["Image"]
         self._info[CONTAINER_INFO_IMAGE_HASH] = raw["Image"]
+        self._info[CONTAINER_INFO_RESTART_COUNT] = raw.get("RestartCount")
 
         if self._network_error <= 5:
             if CONTAINER_INFO_NETWORK_AVAILABLE not in self._info:
@@ -1628,11 +1633,20 @@ class DockerContainerAPI:
             disk_stats["read"] = None
             disk_stats["write"] = None
 
+        # Gather PIDs information
+        pids_stats: dict[str, int | None] = {}
+
+        try:
+            pids_stats["current"] = raw.get("pids_stats", {}).get("current")
+        except Exception:
+            pids_stats["current"] = None
+
         # All information collected
         stats["cpu"] = cpu_stats
         stats["memory"] = memory_stats
         stats["network"] = network_stats
         stats["disk"] = disk_stats
+        stats["pids"] = pids_stats
 
         stats[CONTAINER_STATS_CPU_PERCENTAGE] = cpu_stats.get("total")
         if "online_cpus" in cpu_stats and cpu_stats.get("total") is not None:
@@ -1647,6 +1661,9 @@ class DockerContainerAPI:
         stats[CONTAINER_STATS_NETWORK_SPEED_DOWN] = network_stats.get("speed_rx")
         stats[CONTAINER_STATS_NETWORK_TOTAL_UP] = network_stats.get("total_tx")
         stats[CONTAINER_STATS_NETWORK_TOTAL_DOWN] = network_stats.get("total_rx")
+        stats[CONTAINER_STATS_DISK_READ] = disk_stats.get("read")
+        stats[CONTAINER_STATS_DISK_WRITE] = disk_stats.get("write")
+        stats[CONTAINER_STATS_PIDS] = pids_stats.get("current")
 
         self._stats = stats
 

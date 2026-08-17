@@ -33,6 +33,7 @@ from .const import (
     CONF_MONITORED_CONTAINER_CONDITIONS,
     CONF_MONITORED_DOCKER_CONDITIONS,
     CONF_PRECISION_CPU,
+    CONF_PRECISION_DISK_MB,
     CONF_PRECISION_MEMORY_MB,
     CONF_PRECISION_MEMORY_PERCENTAGE,
     CONF_PRECISION_NETWORK_KB,
@@ -77,6 +78,7 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         CONF_BUTTONENABLED: False,
         CONF_MEMORYCHANGE: 100,
         CONF_PRECISION_CPU: PRECISION,
+        CONF_PRECISION_DISK_MB: PRECISION,
         CONF_PRECISION_MEMORY_MB: PRECISION,
         CONF_PRECISION_MEMORY_PERCENTAGE: PRECISION,
         CONF_PRECISION_NETWORK_KB: PRECISION,
@@ -273,6 +275,10 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
                 ): int,
                 vol.Required(
                     CONF_PRECISION_CPU, default=self.data[CONF_PRECISION_CPU]
+                ): int,
+                vol.Required(
+                    CONF_PRECISION_DISK_MB,
+                    default=self.data[CONF_PRECISION_DISK_MB],
                 ): int,
                 vol.Required(
                     CONF_PRECISION_MEMORY_MB,
