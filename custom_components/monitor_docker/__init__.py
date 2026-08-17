@@ -21,7 +21,6 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.reload import async_setup_reload_service
 
 from .config_flow import DockerConfigFlow
 from .const import (

@@ -12,7 +12,6 @@ from homeassistant.components.button import ENTITY_ID_FORMAT, ButtonEntity
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import slugify
@@ -23,7 +22,6 @@ from .const import (
     ATTR_SERVER,
     CONF_CONTAINERS,
     CONF_CONTAINERS_EXCLUDE,
-    CONF_RENAME,
     CONF_BUTTONENABLED,
     CONFIG,
     CONTAINER,
@@ -31,7 +29,7 @@ from .const import (
     DOMAIN,
     SERVICE_RESTART,
 )
-from .helpers import DockerAPI, DockerContainerAPI, DockerContainerEntity
+from .helpers import DockerContainerAPI, DockerContainerEntity
 
 
 SERVICE_RESTART_SCHEMA = vol.Schema({ATTR_NAME: cv.string, ATTR_SERVER: cv.string})

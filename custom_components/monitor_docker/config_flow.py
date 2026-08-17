@@ -39,6 +39,7 @@ from .const import (
     CONF_PRECISION_NETWORK_MB,
     CONF_RETRY,
     CONF_SWITCHENABLED,
+    CONF_VERSION,
     CONTAINER_MONITOR_LIST,
     CONTAINER_PRE_SELECTION,
     DEFAULT_NAME,
@@ -63,6 +64,7 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         # User
         CONF_NAME: DEFAULT_NAME,
         CONF_URL: "",
+        CONF_VERSION: "auto",
         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
         CONF_CERTPATH: "",
         CONF_RETRY: DEFAULT_RETRY,
@@ -133,6 +135,7 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_NAME, default=self.data[CONF_NAME]): str,
                 vol.Optional(CONF_URL, default=self.data[CONF_URL]): str,
+                vol.Optional(CONF_VERSION, default=self.data[CONF_VERSION]): str,
                 vol.Required(
                     CONF_SCAN_INTERVAL, default=self.data[CONF_SCAN_INTERVAL]
                 ): int,

@@ -652,20 +652,24 @@ class DockerAPI:
 
         try:
             while self._event_create or self._event_destroy:
-                # Go through create loop first
-                for cname in self._event_create:
+                # Handle destroys first. On a container recreate (e.g. Watchtower),
+                # Docker emits a destroy and a create event for the same name; if
+                # create ran first, it would see the old entry still registered in
+                # self._containers, log "already monitored" and bail out, leaving
+                # the container unmonitored forever once destroy then removed it.
+                if self._event_destroy:
+                    for cname in list(self._event_destroy):
+                        await self._container_remove(cname)
+
+                    self._event_destroy = {}
+
+                for cname in list(self._event_create):
                     if self._event_create[cname] > 2:
                         del self._event_create[cname]
                         await self._container_add(cname)
                         break
                     else:
                         self._event_create[cname] += 1
-                else:
-                    # If all create, we can handle the destroy loop
-                    for cname in self._event_destroy:
-                        await self._container_remove(cname)
-
-                    self._event_destroy = {}
 
                 # Sleep for 1 second, don't try to create it too fast
                 await asyncio.sleep(1)

@@ -12,7 +12,6 @@ from homeassistant.components.switch import ENTITY_ID_FORMAT, SwitchEntity
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import slugify
@@ -64,7 +63,7 @@ async def async_setup_platform(
         cname = parm.data[ATTR_NAME]
         cserver = parm.data.get(ATTR_SERVER, None)
 
-        server_name = name
+        server_name = instance
         if cserver is not None:
             if cserver not in hass.data[DOMAIN]:
                 _LOGGER.error("Server '%s' is not configured", cserver)
