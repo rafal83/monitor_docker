@@ -131,6 +131,7 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | scan_interval               | time_period    (Optional)  | Update interval. Defaults to 10 seconds.                              |
 | retry                       | time_period    (Optional)  | Retry interval when a TCP error is detected. Defaults to 60 seconds.  |
 | certpath                    | string         (Optional)  | If a TCP socket is used, you can define your Docker certificate path, forcing Monitor Docker to enable TLS. The filenames must be `ca.pem`, `cert.pem` and `key.pem`|
+| portainer_apikey            | string         (Optional)  | A Portainer API key. Set this together with `url` pointing at a Portainer Docker-proxy endpoint (see the Q&A section) to connect through Portainer instead of a Docker daemon directly. |
 | containers                  | list           (Optional)  | Array of containers to monitor. Defaults to all containers.           |
 | containers_exclude          | list           (Optional)  | Array of containers to be excluded from monitoring, when all containers are included. |
 | monitored_conditions        | list           (Optional)  | Array of conditions to be monitored. Defaults to all conditions.      |
@@ -270,9 +271,18 @@ monitor_docker:
 11. **Question:** Can you add the feature to check if there are updates to images in e.g. hub.docker.com?  
      **Answer:** Such feature goes outside of the scope of monitor_docker and there are few other options available for this. You can use https://newreleases.io or https://github.com/crazy-max/diun/
 12. **Question:** Is Docker via SSH supported?  
-     **Answer:** No, the Docker library used, does not support it. There is a small _but_, maybe you can get it to work via `socat`. The following URL may help you: https://serverfault.com/questions/127794/forward-local-port-or-socket-file-to-remote-socket-file/362833#362833
+     **Answer:** Yes, set `url` to `ssh://user@host`. SSH key-based auth is used (the same keys/agent Home Assistant's process has access to); password auth is not supported.
 13. **Question:** Can the sensors have unique entity identifiers? This is useful for renaming it in the HA GUI  
      **Answer:** This is not possible, due to the nature of how this integration works. The docker name needs to be consistent across restart and recreate, this can be only done by overruling the entity identifier as it is working now
+14. **Question:** Can this integration connect through Portainer instead of directly to a Docker daemon?  
+     **Answer:** Yes. Portainer exposes a proxy that speaks the real Docker Engine API, so `monitor_docker` can talk to it like any other remote Docker host. Create an API key in Portainer (*My account -> API tokens*), then set:
+```yaml
+monitor_docker:
+  - name: Docker
+    url: https://<portainer_host>:9443/api/endpoints/<endpoint_id>/docker
+    portainer_apikey: ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+     (`<endpoint_id>` is the numeric id of the environment in Portainer, visible in its URL when you open that environment.) The same fields are available in the UI config flow. If Portainer itself is served over HTTPS with a self-signed certificate, `certpath` is not the right tool for that (it's for a Docker daemon's own client-cert TLS) - make sure Portainer's certificate is otherwise trusted by the host running Home Assistant.
 
 ## Credits
 

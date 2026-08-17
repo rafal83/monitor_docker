@@ -32,6 +32,7 @@ from .const import (
     CONF_MEMORYCHANGE,
     CONF_MONITORED_CONTAINER_CONDITIONS,
     CONF_MONITORED_DOCKER_CONDITIONS,
+    CONF_PORTAINER_APIKEY,
     CONF_PRECISION_CPU,
     CONF_PRECISION_DISK_MB,
     CONF_PRECISION_MEMORY_MB,
@@ -68,6 +69,7 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
         CONF_VERSION: "auto",
         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
         CONF_CERTPATH: "",
+        CONF_PORTAINER_APIKEY: "",
         CONF_RETRY: DEFAULT_RETRY,
         # Containers
         CONF_CONTAINERS: [],
@@ -142,6 +144,9 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_SCAN_INTERVAL, default=self.data[CONF_SCAN_INTERVAL]
                 ): int,
                 vol.Optional(CONF_CERTPATH, default=self.data[CONF_CERTPATH]): str,
+                vol.Optional(
+                    CONF_PORTAINER_APIKEY, default=self.data[CONF_PORTAINER_APIKEY]
+                ): str,
                 vol.Required(CONF_RETRY, default=self.data[CONF_RETRY]): int,
             }
         )

@@ -37,6 +37,7 @@ from .const import (
     COMPONENTS,
     CONF_CERTPATH,
     CONF_MEMORYCHANGE,
+    CONF_PORTAINER_APIKEY,
     CONF_PRECISION_CPU,
     CONF_PRECISION_DISK_MB,
     CONF_PRECISION_MEMORY_MB,
@@ -231,6 +232,15 @@ class DockerAPI:
 
             # Setup new TCP connection, otherwise timeout takes toooo long
             self._tcp_connector = TCPConnector(ssl=self._tcp_ssl_context)
+
+            # A Portainer API key lets 'url' point at a Portainer Docker-proxy
+            # endpoint (https://<portainer>:9443/api/endpoints/<id>/docker)
+            # instead of a real Docker daemon; Portainer authenticates that
+            # proxy via this header rather than the daemon's own TLS certs.
+            headers = None
+            if self._config[CONF_PORTAINER_APIKEY]:
+                headers = {"X-API-Key": self._config[CONF_PORTAINER_APIKEY]}
+
             self._tcp_session = ClientSession(
                 connector=self._tcp_connector,
                 timeout=ClientTimeout(
@@ -238,6 +248,7 @@ class DockerAPI:
                     sock_connect=5,
                     total=10,
                 ),
+                headers=headers,
             )
 
         try:
