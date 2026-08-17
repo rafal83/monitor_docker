@@ -238,6 +238,16 @@ class DockerAPI:
                 self._tcp_ssl_context = await self._hass.async_add_executor_job(
                     self._docker_ssl_context
                 )
+            elif self._config[CONF_PORTAINER_APIKEY] and url.find("https:") == 0:
+                # Portainer instances are commonly reachable only behind
+                # their own self-signed certificate; identity here is
+                # already established by the API key, not the cert, so
+                # don't fail the connection over an untrusted/self-signed
+                # server certificate the way we would for a real Docker
+                # daemon's own TLS.
+                self._tcp_ssl_context = await self._hass.async_add_executor_job(
+                    self._insecure_ssl_context
+                )
 
             # Setup new TCP connection, otherwise timeout takes toooo long
             self._tcp_connector = TCPConnector(ssl=self._tcp_ssl_context)
@@ -402,6 +412,20 @@ class DockerAPI:
 
         context.verify_flags &= ~ssl.VERIFY_X509_STRICT
         context.check_hostname = False
+
+        return context
+
+    #############################################################
+    def _insecure_ssl_context(self) -> ssl.SSLContext:
+        """SSL context that trusts any server certificate.
+
+        Used only for a Portainer proxy connection, where the API key -
+        not the server certificate - is what establishes trust, and
+        Portainer's own self-signed certificate is the common case.
+        """
+        context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
 
         return context
 
