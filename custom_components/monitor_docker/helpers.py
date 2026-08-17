@@ -47,7 +47,6 @@ from .const import (
     CONF_PRECISION_NETWORK_KB,
     CONF_PRECISION_NETWORK_MB,
     CONF_RETRY,
-    CONF_UPDATE_CHECK_ENABLED,
     CONF_VERSION,
     CONTAINER,
     CONTAINER_INFO_HEALTH,
@@ -1146,7 +1145,9 @@ class DockerContainerAPI:
         self._stats: dict[str, Any] = {}
         self._labels: dict[str, str] = {}
 
-        self._update_check_enabled: bool = config[CONF_UPDATE_CHECK_ENABLED]
+        # Update checking (and the whole "update" entity) is only offered
+        # when connecting through a Portainer proxy - see README.
+        self._update_check_enabled: bool = bool(config[CONF_PORTAINER_APIKEY])
         self._update_info: dict[str, Any] = {}
         self._last_update_check: datetime | None = None
 

@@ -21,7 +21,7 @@ from .const import (
     API,
     CONF_CONTAINERS,
     CONF_CONTAINERS_EXCLUDE,
-    CONF_UPDATE_CHECK_ENABLED,
+    CONF_PORTAINER_APIKEY,
     CONFIG,
     CONTAINER,
     DOMAIN,
@@ -60,8 +60,11 @@ async def async_setup_platform(
     api = hass.data[DOMAIN][instance][API]
     config = hass.data[DOMAIN][instance][CONFIG]
 
-    if not config[CONF_UPDATE_CHECK_ENABLED]:
-        _LOGGER.debug("[%s]: Update checking is disabled", instance)
+    if not config[CONF_PORTAINER_APIKEY]:
+        _LOGGER.debug(
+            "[%s]: No Portainer API key configured, update entities are not created",
+            instance,
+        )
         return True
 
     _LOGGER.debug("[%s]: Setting up update entity(-ies)", instance)

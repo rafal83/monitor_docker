@@ -61,7 +61,6 @@
                     "monitored_container_conditions": "Conditions de chaque container à surveiller",
                     "switchenabled": "Activer/Désactiver l'entité switch pour les containers",
                     "buttonenabled": "Activer/Désactiver l'entité bouton pour les containers",
-                    "update_check_enabled": "Vérifier les mises à jour d'image sur les registres (ajoute une entité update par container ; vérification peu fréquente pour éviter les limites de débit des registres)",
                     "memorychange": "Variation d'utilisation mémoire avant alerte",
                     "precision_cpu": "Précision du pourcentage d'utilisation CPU",
                     "precision_disk_mb": "Précision de la lecture/écriture disque en Mo",

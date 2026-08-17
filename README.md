@@ -141,7 +141,6 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | switchname                  | string         (Optional)  | Switch string to format the name used in Home Assistant. Defaults to `{name}`, where `{name}` is the container name. |
 | switchenabled               | boolean / list (Optional)  | Enable/Disable the switch entity for containers (Default: `True` Enabled switch for all containers, `False`: Disabled switch for all containers). Or specify a list of containers for which to enable switch entities. |
 | buttonenabled               | boolean        (Optional)  | Enable/Disable the button entity for containers (Default: `False` Enabled button for all containers, `False`: Disabled button for all containers). Or specify a list of containers for which to enable button entities. |
-| update_check_enabled        | boolean        (Optional)  | Check registries for image updates and add an `update` entity per container (Default: `False`). See the "Image updates" section below before enabling. |
 | precision_cpu               | integer        (Optional)  | Precision of CPU usage percentage (Default: 2) |
 | precision_memory_mb         | integer        (Optional)  | Precision of memory usage in MB (Default: 2) |
 | precision_memory_percentage | integer        (Optional)  | Precision of memory usage in percentage (Default: 2) |
@@ -181,9 +180,9 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 
 ### Image updates
 
-Setting `update_check_enabled: true` (or the equivalent UI toggle) adds an `update` entity per monitored container. It checks the container's registry (Docker Hub, GHCR, Quay, or any registry that speaks the standard Docker Registry HTTP API V2) for whether the currently-used tag now points at a different image digest than what's running locally - no third-party service involved, and no image data is downloaded for the check itself, only a manifest digest.
+Setting `portainer_apikey` (see the Portainer question below) also adds an `update` entity per monitored container - there is no separate toggle for it. It checks the container's registry (Docker Hub, GHCR, Quay, or any registry that speaks the standard Docker Registry HTTP API V2) for whether the currently-used tag now points at a different image digest than what's running locally - the check itself doesn't go through Portainer or any third-party service, it talks to the registry directly, and no image data is downloaded for it, only a manifest digest.
 
-A few things worth knowing before turning it on:
+A few things worth knowing before setting up Portainer just for this:
 
 - Checks run at most once every 6 hours per container, deliberately far apart from `scan_interval`, to stay clear of registry rate limits (Docker Hub in particular rate-limits anonymous manifest requests).
 - It only works for images pulled with a tag from a registry (not locally-built images, and not images already pinned to a digest).

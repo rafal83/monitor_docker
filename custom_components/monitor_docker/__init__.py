@@ -45,7 +45,6 @@ from .const import (
     CONF_SWITCHNAME,
     CONF_BUTTONENABLED,
     CONF_BUTTONNAME,
-    CONF_UPDATE_CHECK_ENABLED,
     CONF_VERSION,
     CONFIG,
     CONTAINER_INFO_ALLINONE,
@@ -90,7 +89,6 @@ DOCKER_SCHEMA = vol.Schema(
         vol.Optional(CONF_BUTTONENABLED, default=False): vol.Any(
             cv.boolean, cv.ensure_list(cv.string)
         ),
-        vol.Optional(CONF_UPDATE_CHECK_ENABLED, default=False): cv.boolean,
         vol.Optional(CONF_SWITCHNAME, default=DEFAULT_SWITCHNAME): cv.string,
         vol.Optional(CONF_BUTTONNAME, default=DEFAULT_BUTTONNAME): cv.string,
         vol.Optional(CONF_CERTPATH, default=""): cv.string,

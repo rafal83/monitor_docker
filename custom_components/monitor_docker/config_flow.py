@@ -41,7 +41,6 @@ from .const import (
     CONF_PRECISION_NETWORK_MB,
     CONF_RETRY,
     CONF_SWITCHENABLED,
-    CONF_UPDATE_CHECK_ENABLED,
     CONF_VERSION,
     CONTAINER_MONITOR_LIST,
     CONTAINER_PRE_SELECTION,
@@ -77,7 +76,6 @@ DEFAULT_DATA = {
     CONF_MONITORED_CONDITIONS: [],
     CONF_SWITCHENABLED: True,
     CONF_BUTTONENABLED: False,
-    CONF_UPDATE_CHECK_ENABLED: False,
     CONF_MEMORYCHANGE: 100,
     CONF_PRECISION_CPU: PRECISION,
     CONF_PRECISION_DISK_MB: PRECISION,
@@ -311,10 +309,6 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
                 ): bool,
                 vol.Required(
                     CONF_BUTTONENABLED, default=self.data[CONF_BUTTONENABLED]
-                ): bool,
-                vol.Required(
-                    CONF_UPDATE_CHECK_ENABLED,
-                    default=self.data[CONF_UPDATE_CHECK_ENABLED],
                 ): bool,
                 vol.Required(
                     CONF_MEMORYCHANGE, default=self.data[CONF_MEMORYCHANGE]
