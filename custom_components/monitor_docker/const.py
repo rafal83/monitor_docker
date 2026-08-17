@@ -49,7 +49,12 @@ DEFAULT_SENSORNAME = "{name} {sensor}"
 DEFAULT_SWITCHNAME = "{name}"
 DEFAULT_BUTTONNAME = "{name} Restart"
 
-COMPONENTS = ["sensor", "switch", "button"]
+# How often to check registries for image updates, kept far apart from the
+# regular scan_interval to stay well clear of registry rate limits (e.g.
+# Docker Hub's anonymous pull-rate limit).
+UPDATE_CHECK_INTERVAL = 6 * 60 * 60
+
+COMPONENTS = ["sensor", "switch", "button", "update"]
 
 SERVICE_RESTART = "restart"
 SERVICE_RELOAD = "reload"

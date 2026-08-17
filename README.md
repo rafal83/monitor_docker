@@ -141,6 +141,7 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | switchname                  | string         (Optional)  | Switch string to format the name used in Home Assistant. Defaults to `{name}`, where `{name}` is the container name. |
 | switchenabled               | boolean / list (Optional)  | Enable/Disable the switch entity for containers (Default: `True` Enabled switch for all containers, `False`: Disabled switch for all containers). Or specify a list of containers for which to enable switch entities. |
 | buttonenabled               | boolean        (Optional)  | Enable/Disable the button entity for containers (Default: `False` Enabled button for all containers, `False`: Disabled button for all containers). Or specify a list of containers for which to enable button entities. |
+| update_check_enabled        | boolean        (Optional)  | Check registries for image updates and add an `update` entity per container (Default: `False`). See the "Image updates" section below before enabling. |
 | precision_cpu               | integer        (Optional)  | Precision of CPU usage percentage (Default: 2) |
 | precision_memory_mb         | integer        (Optional)  | Precision of memory usage in MB (Default: 2) |
 | precision_memory_percentage | integer        (Optional)  | Precision of memory usage in percentage (Default: 2) |
@@ -172,7 +173,22 @@ appdaemon: AppDaemon - Will match anything with "appdaemon"
 | network_speed_down                | Network speed downstream. **Not** available when using network mode is 'host' | kB/s  |
 | network_total_up                  | Network total upstream. **Not** available when using network mode is 'host' | MB    |
 | network_total_down                | Network total downstream. **Not** available when using network mode is 'host' | MB    |
+| disk_read                         | Disk read, cumulative since the container started | MB    |
+| disk_write                        | Disk write, cumulative since the container started | MB    |
+| pids                              | Current number of processes in the container | -     |
+| restart_count                     | Number of times Docker's restart policy has restarted the container | -     |
 | allinone                          | This is a special condition and when used, it will only create 1 sensor per container with all the monitored conditions as attribute value. NOTE: If you use this sensor, all other sensors are NOT created, just 1 sensor |-     |
+
+### Image updates
+
+Setting `update_check_enabled: true` (or the equivalent UI toggle) adds an `update` entity per monitored container. It checks the container's registry (Docker Hub, GHCR, Quay, or any registry that speaks the standard Docker Registry HTTP API V2) for whether the currently-used tag now points at a different image digest than what's running locally - no third-party service involved, and no image data is downloaded for the check itself, only a manifest digest.
+
+A few things worth knowing before turning it on:
+
+- Checks run at most once every 6 hours per container, deliberately far apart from `scan_interval`, to stay clear of registry rate limits (Docker Hub in particular rate-limits anonymous manifest requests).
+- It only works for images pulled with a tag from a registry (not locally-built images, and not images already pinned to a digest).
+- Private registries that require real credentials (not just the anonymous token flow) aren't supported - the check will just report "unknown" for those, not "up to date".
+- The `update` entity's Install button pulls the new image and recreates the container with it, rebuilding its configuration from `docker inspect` (env, mounts, ports, restart policy, networks...). This is **not** the same as `docker compose pull && docker compose up -d` - it doesn't re-read your compose file, so if your compose setup relies on something `docker inspect` doesn't fully capture, the recreated container could drift from it. It renames the old container instead of removing it first and rolls back automatically if the new image fails to start, but **anonymous (unnamed) volumes are never preserved across a recreate** (this is true of Docker recreates in general, not specific to this integration) - only named volumes and bind mounts survive. If in doubt, prefer updating via `docker compose` yourself and just use the entity for detection.
 
 ### Debugging
 

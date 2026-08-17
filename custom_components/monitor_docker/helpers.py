@@ -47,6 +47,7 @@ from .const import (
     CONF_PRECISION_NETWORK_KB,
     CONF_PRECISION_NETWORK_MB,
     CONF_RETRY,
+    CONF_UPDATE_CHECK_ENABLED,
     CONF_VERSION,
     CONTAINER,
     CONTAINER_INFO_HEALTH,
@@ -84,7 +85,9 @@ from .const import (
     PRECISION,
     STACK,
     STACK_SUBENTRY_TYPE,
+    UPDATE_CHECK_INTERVAL,
 )
+from .registry import async_get_remote_digest, parse_image_reference
 
 VERSION = "1.20"
 
@@ -1143,9 +1146,22 @@ class DockerContainerAPI:
         self._stats: dict[str, Any] = {}
         self._labels: dict[str, str] = {}
 
+        self._update_check_enabled: bool = config[CONF_UPDATE_CHECK_ENABLED]
+        self._update_info: dict[str, Any] = {}
+        self._last_update_check: datetime | None = None
+
     #############################################################
     def get_labels(self) -> dict[str, str]:
         return self._labels
+
+    #############################################################
+    def get_update_info(self) -> dict[str, Any]:
+        return self._update_info
+
+    #############################################################
+    def force_update_check(self) -> None:
+        """Make the next poll cycle re-check the registry immediately."""
+        self._last_update_check = None
 
     #############################################################
     async def _fetch_labels(self) -> None:
@@ -1155,6 +1171,81 @@ class DockerContainerAPI:
             self._labels = (raw.get("Config") or {}).get("Labels") or {}
         except Exception:
             self._labels = {}
+
+    #############################################################
+    async def _check_for_update(self) -> None:
+        """Check the registry for a newer image, if enabled and due.
+
+        Best-effort: any failure (registry unreachable, private/unknown
+        registry, no digest to compare) just leaves the previous result (or
+        none) in place rather than reporting a false "no update available".
+        """
+        if not self._update_check_enabled:
+            return
+
+        now = datetime.now(timezone.utc)
+        if (
+            self._last_update_check is not None
+            and (now - self._last_update_check).total_seconds()
+            < UPDATE_CHECK_INTERVAL
+        ):
+            return
+
+        self._last_update_check = now
+
+        image = self._info.get(CONTAINER_INFO_IMAGE)
+        if not image:
+            return
+
+        try:
+            local_image = await self._api.images.inspect(image)
+            repo_digests = local_image.get("RepoDigests") or []
+
+            _, repository, _ = parse_image_reference(image)
+            repo_tail = repository.rsplit("/", 1)[-1]
+            local_digest = None
+            for entry in repo_digests:
+                if "@" not in entry:
+                    continue
+                if entry.rsplit("@", 1)[0].rsplit("/", 1)[-1] == repo_tail:
+                    local_digest = entry.rsplit("@", 1)[1]
+                    break
+            if local_digest is None and repo_digests and "@" in repo_digests[0]:
+                local_digest = repo_digests[0].rsplit("@", 1)[1]
+
+            if not local_digest:
+                _LOGGER.debug(
+                    "[%s] %s: No local RepoDigest for '%s', can't check for updates",
+                    self._instance,
+                    self._name,
+                    image,
+                )
+                return
+
+            async with ClientSession() as session:
+                remote_digest = await async_get_remote_digest(session, image)
+
+            if not remote_digest:
+                # Registry unreachable/private/unknown - a transient failure
+                # shouldn't flip a real "update available" back to "unknown"
+                return
+
+            def short_digest(digest: str) -> str:
+                return digest.split(":", 1)[-1][:12]
+
+            self._update_info = {
+                "image": image,
+                "installed_version": short_digest(local_digest),
+                "latest_version": short_digest(remote_digest),
+                "update_available": local_digest != remote_digest,
+            }
+        except Exception as err:
+            _LOGGER.debug(
+                "[%s] %s: Update check failed (%s)",
+                self._instance,
+                self._name,
+                str(err),
+            )
 
     async def init(self):
         # During start-up we will wait on container attachment,
@@ -1269,6 +1360,9 @@ class DockerContainerAPI:
                     # Only run stats if container is running
                     if self._info[CONTAINER_INFO_STATE] in ("running", "paused"):
                         await self._run_container_stats()
+
+                    # Rate-limited internally; a no-op most cycles
+                    await self._check_for_update()
                 else:
                     _LOGGER.debug(
                         "[%s] %s: Waiting on stop/start of container",
@@ -1885,6 +1979,115 @@ class DockerContainerAPI:
 
         self._busy = True
         await self._restart()
+
+    #############################################################
+    async def recreate_with_image(self, new_image: str) -> bool:
+        """Pull new_image and recreate this container with it, same config.
+
+        Renames the running container out of the way instead of removing it
+        first, so if the new image fails to create/start, the old container
+        can be restored - the host is never left with neither running. Not
+        preserved: anonymous (unnamed) volumes, which get fresh empty
+        volumes on any recreate, Docker-native tools included; only named
+        volumes and bind mounts survive.
+        """
+        _LOGGER.info(
+            "[%s] %s: Recreating container with image '%s'",
+            self._instance,
+            self._name,
+            new_image,
+        )
+
+        self._busy = True
+        original_name = self._name
+        rollback_name = f"{original_name}_rollback_{int(datetime.now().timestamp())}"
+        new_container = None
+
+        try:
+            await self._api.images.pull(new_image)
+
+            raw = await self._container.show()
+            config = dict(raw["Config"])
+            config["Image"] = new_image
+            config["HostConfig"] = raw["HostConfig"]
+
+            networks: dict[str, Any] = (raw.get("NetworkSettings") or {}).get(
+                "Networks"
+            ) or {}
+            network_items = list(networks.items())
+            if network_items:
+                first_name, first_endpoint = network_items[0]
+                config["NetworkingConfig"] = {
+                    "EndpointsConfig": {first_name: first_endpoint}
+                }
+
+            await self._container.rename(rollback_name)
+            await self._container.stop(t=10)
+
+            new_container = await self._api.containers.create(
+                config, name=original_name
+            )
+
+            # Any networks beyond the first are attached separately,
+            # mirroring how "docker network connect" works.
+            for net_name, endpoint_config in network_items[1:]:
+                try:
+                    await self._api.networks.get(net_name).connect(
+                        {"Container": new_container.id, "EndpointConfig": endpoint_config}
+                    )
+                except Exception as err:
+                    _LOGGER.warning(
+                        "[%s] %s: Could not reattach network '%s' after recreate (%s)",
+                        self._instance,
+                        original_name,
+                        net_name,
+                        str(err),
+                    )
+
+            await new_container.start()
+
+            # Success - drop the old container and switch over
+            await self._container.delete(force=True)
+            self._container = new_container
+            await self._fetch_labels()
+
+            _LOGGER.info(
+                "[%s] %s: Recreated successfully with image '%s'",
+                self._instance,
+                original_name,
+                new_image,
+            )
+            return True
+
+        except Exception as err:
+            _LOGGER.error(
+                "[%s] %s: Recreate with image '%s' failed (%s), rolling back",
+                self._instance,
+                original_name,
+                new_image,
+                str(err),
+            )
+            if new_container is not None:
+                try:
+                    await new_container.delete(force=True)
+                except Exception:
+                    pass
+            try:
+                await self._container.rename(original_name)
+                await self._container.start()
+            except Exception as rollback_err:
+                _LOGGER.error(
+                    "[%s] %s: Rollback after failed recreate also failed (%s) - "
+                    "container may be named '%s' and stopped, check manually",
+                    self._instance,
+                    original_name,
+                    str(rollback_err),
+                    rollback_name,
+                )
+            return False
+
+        finally:
+            self._busy = False
 
     #############################################################
     def get_name(self) -> str:

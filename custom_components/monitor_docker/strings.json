@@ -60,6 +60,7 @@
                     "monitored_container_conditions": "Conditions of each container to be monitored",
                     "switchenabled": "Enable/Disable the switch entity for containers",
                     "buttonenabled": "Enable/Disable the button entity for containers",
+                    "update_check_enabled": "Check registries for image updates (adds an update entity per container; polls infrequently to avoid registry rate limits)",
                     "memorychange": "Change of memory usage before alerting",
                     "precision_cpu": "Precision of CPU usage percentage",
                     "precision_disk_mb": "Precision of disk read/write in MB",
