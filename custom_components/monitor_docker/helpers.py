@@ -2047,8 +2047,12 @@ class DockerContainerAPI:
 
             await new_container.start()
 
-            # Success - drop the old container and switch over
-            await self._container.delete(force=True)
+            # The new container is up - this is a success from here on.
+            # Switch over immediately so a failure while cleaning up the old
+            # (renamed, stopped) container can't be mistaken for the whole
+            # recreate having failed and trigger a rollback that would
+            # collide with the new container's name.
+            old_container = self._container
             self._container = new_container
             await self._fetch_labels()
 
@@ -2058,6 +2062,19 @@ class DockerContainerAPI:
                 original_name,
                 new_image,
             )
+
+            try:
+                await old_container.delete(force=True)
+            except Exception as err:
+                _LOGGER.warning(
+                    "[%s] %s: Recreate succeeded, but could not remove the old "
+                    "container (now named '%s'): %s. Remove it manually.",
+                    self._instance,
+                    original_name,
+                    rollback_name,
+                    str(err),
+                )
+
             return True
 
         except Exception as err:
