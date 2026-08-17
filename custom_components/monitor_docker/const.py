@@ -37,6 +37,7 @@ CONF_SWITCHNAME = "switchname"
 CONF_BUTTONENABLED = "buttonenabled"
 CONF_BUTTONNAME = "buttonname"
 CONF_VERSION = "version"
+CONF_UPDATE_CHECK_ENABLED = "update_check_enabled"
 
 LABEL_COMPOSE_PROJECT = "com.docker.compose.project"
 LABEL_SWARM_STACK = "com.docker.stack.namespace"

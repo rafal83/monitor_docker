@@ -22,7 +22,7 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
-from .config_flow import DockerConfigFlow
+from .config_flow import DEFAULT_DATA, DockerConfigFlow
 from .const import (
     API,
     CONF_CERTPATH,
@@ -45,6 +45,7 @@ from .const import (
     CONF_SWITCHNAME,
     CONF_BUTTONENABLED,
     CONF_BUTTONNAME,
+    CONF_UPDATE_CHECK_ENABLED,
     CONF_VERSION,
     CONFIG,
     CONTAINER_INFO_ALLINONE,
@@ -63,7 +64,7 @@ from .helpers import DockerAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.SWITCH, Platform.UPDATE]
 
 DOCKER_SCHEMA = vol.Schema(
     {
@@ -89,6 +90,7 @@ DOCKER_SCHEMA = vol.Schema(
         vol.Optional(CONF_BUTTONENABLED, default=False): vol.Any(
             cv.boolean, cv.ensure_list(cv.string)
         ),
+        vol.Optional(CONF_UPDATE_CHECK_ENABLED, default=False): cv.boolean,
         vol.Optional(CONF_SWITCHNAME, default=DEFAULT_SWITCHNAME): cv.string,
         vol.Optional(CONF_BUTTONNAME, default=DEFAULT_BUTTONNAME): cv.string,
         vol.Optional(CONF_CERTPATH, default=""): cv.string,
@@ -157,6 +159,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
+
+    # Entries created before a new optional field was added won't have it in
+    # their stored data, and helpers.py accesses config fields directly
+    # (self._config[X]) rather than defensively - backfill any gaps against
+    # the flow's own defaults so older entries don't crash on setup every
+    # time a field gets added.
+    if missing := {
+        key: value
+        for key, value in DEFAULT_DATA.items()
+        if key not in entry.data
+    }:
+        _LOGGER.debug(
+            "[%s]: Backfilling missing config keys %s with their defaults",
+            entry.data.get(CONF_NAME, entry.title),
+            list(missing),
+        )
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, **missing}
+        )
 
     api = None
 

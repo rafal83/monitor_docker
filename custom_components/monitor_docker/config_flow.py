@@ -41,6 +41,7 @@ from .const import (
     CONF_PRECISION_NETWORK_MB,
     CONF_RETRY,
     CONF_SWITCHENABLED,
+    CONF_UPDATE_CHECK_ENABLED,
     CONF_VERSION,
     CONTAINER_MONITOR_LIST,
     CONTAINER_PRE_SELECTION,
@@ -57,40 +58,58 @@ from .helpers import DockerAPI
 _LOGGER = logging.getLogger(__name__)
 
 
+# The config flow's field defaults. Also used by __init__.py to backfill
+# entries created before a field existed. Never mutate this directly - the
+# flow copies it into its own per-instance self.data in __init__.
+DEFAULT_DATA = {
+    # User
+    CONF_NAME: DEFAULT_NAME,
+    CONF_URL: "",
+    CONF_VERSION: "auto",
+    CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+    CONF_CERTPATH: "",
+    CONF_PORTAINER_APIKEY: "",
+    CONF_RETRY: DEFAULT_RETRY,
+    # Containers
+    CONF_CONTAINERS: [],
+    CONF_CONTAINERS_EXCLUDE: [],  # Not relevant as all are selected
+    # Conditions
+    CONF_MONITORED_CONDITIONS: [],
+    CONF_SWITCHENABLED: True,
+    CONF_BUTTONENABLED: False,
+    CONF_UPDATE_CHECK_ENABLED: False,
+    CONF_MEMORYCHANGE: 100,
+    CONF_PRECISION_CPU: PRECISION,
+    CONF_PRECISION_DISK_MB: PRECISION,
+    CONF_PRECISION_MEMORY_MB: PRECISION,
+    CONF_PRECISION_MEMORY_PERCENTAGE: PRECISION,
+    CONF_PRECISION_NETWORK_KB: PRECISION,
+    CONF_PRECISION_NETWORK_MB: PRECISION,
+}
+
+
 class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
     """Docker config flow."""
 
     VERSION = 1
     MINOR_VERSION = 1
-    data = {
-        # User
-        CONF_NAME: DEFAULT_NAME,
-        CONF_URL: "",
-        CONF_VERSION: "auto",
-        CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
-        CONF_CERTPATH: "",
-        CONF_PORTAINER_APIKEY: "",
-        CONF_RETRY: DEFAULT_RETRY,
-        # Containers
-        CONF_CONTAINERS: [],
-        CONF_CONTAINERS_EXCLUDE: [],  # Not relevant as all are selected
-        # Conditions
-        CONF_MONITORED_CONDITIONS: [],
-        CONF_SWITCHENABLED: True,
-        CONF_BUTTONENABLED: False,
-        CONF_MEMORYCHANGE: 100,
-        CONF_PRECISION_CPU: PRECISION,
-        CONF_PRECISION_DISK_MB: PRECISION,
-        CONF_PRECISION_MEMORY_MB: PRECISION,
-        CONF_PRECISION_MEMORY_PERCENTAGE: PRECISION,
-        CONF_PRECISION_NETWORK_KB: PRECISION,
-        CONF_PRECISION_NETWORK_MB: PRECISION,
-    }
     options = None
     _docker_api = None
     _config_entry: ConfigEntry | None = None
     _docker_conditions = DOCKER_PRE_SELECTION
     _container_conditions = CONTAINER_PRE_SELECTION
+
+    def __init__(self) -> None:
+        """Initialize the flow with its own copy of the defaults.
+
+        self.data must be a per-instance dict, not the shared DEFAULT_DATA -
+        every step mutates it via self.data.update(...)/self.data[...]=...,
+        which would otherwise corrupt DEFAULT_DATA (and leak between
+        concurrent/sequential flow runs) since Python resolves an unset
+        instance attribute to the class attribute of the same name.
+        """
+        super().__init__()
+        self.data = dict(DEFAULT_DATA)
 
     async def async_step_user(
         self, user_input: Mapping[str, Any] | None = None
@@ -284,6 +303,10 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
                 ): bool,
                 vol.Required(
                     CONF_BUTTONENABLED, default=self.data[CONF_BUTTONENABLED]
+                ): bool,
+                vol.Required(
+                    CONF_UPDATE_CHECK_ENABLED,
+                    default=self.data[CONF_UPDATE_CHECK_ENABLED],
                 ): bool,
                 vol.Required(
                     CONF_MEMORYCHANGE, default=self.data[CONF_MEMORYCHANGE]
