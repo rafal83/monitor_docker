@@ -36,6 +36,7 @@
             "reconfigure": {
                 "description": "Reconfigurer les paramètres du démon Docker",
                 "menu_options": {
+                    "user": "Paramètres de connexion",
                     "containers": "Containers à surveiller",
                     "conditions": "Conditions à surveiller"
                 }

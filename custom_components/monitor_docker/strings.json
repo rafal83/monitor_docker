@@ -36,6 +36,7 @@
             "reconfigure": {
                 "description": "Reconfigure settings of Docker daemon",
                 "menu_options": {
+                    "user": "Connection settings",
                     "containers": "Containers to monitor",
                     "conditions": "Conditions to monitor"
                 }

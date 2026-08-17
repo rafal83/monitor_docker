@@ -134,10 +134,18 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unhandled exception in user step")
                 errors["base"] = str(e)
 
-            # Unless re-authorization, check and abort if name already exists
+            # Unless re-authorization, check and abort if name already exists.
+            # When reconfiguring, the entry's own (still unchanged) name is
+            # already registered - that's not a collision.
             if self.source != SOURCE_REAUTH:
+                unchanged_name = (
+                    self._config_entry is not None
+                    and self._config_entry.data.get(CONF_NAME)
+                    == user_input[CONF_NAME]
+                )
                 if (
-                    DOMAIN in self.hass.data
+                    not unchanged_name
+                    and DOMAIN in self.hass.data
                     and user_input[CONF_NAME] in self.hass.data[DOMAIN]
                 ):
                     errors[CONF_NAME] = "name_exists"
@@ -192,7 +200,7 @@ class DockerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_menu(
             step_id="reconfigure",
-            menu_options=["containers", "conditions"],
+            menu_options=["user", "containers", "conditions"],
         )
 
     async def async_step_reauth(
