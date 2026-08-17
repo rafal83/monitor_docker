@@ -74,8 +74,8 @@
                 "data": {
                     "monitored_docker_conditions": "Conditions of the controller to be monitored",
                     "monitored_container_conditions": "Conditions of each container to be monitored",
-                    "switchenabled": "Enable/Disable the switch entity for containers",
-                    "buttonenabled": "Enable/Disable the button entity for containers",
+                    "switchenabled": "Create a switch entity per container, to start/stop it from Home Assistant",
+                    "buttonenabled": "Create a button entity per container, to restart it from Home Assistant",
                     "memorychange": "Change of memory usage before alerting",
                     "precision_cpu": "Precision of CPU usage percentage",
                     "precision_disk_mb": "Precision of disk read/write in MB",
