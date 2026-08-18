@@ -448,6 +448,11 @@ class DockerAPI:
         # Cancel the containers
 
         for container in self._containers.values():
+            if container is None:
+                # Not yet attached (e.g. init() hasn't reached it, or a
+                # transient proxy failure like a Portainer 502 left it
+                # unset) - nothing to cancel.
+                continue
             _LOGGER.debug(
                 "[%s] %s: Container cancelled", self._instance, container._name
             )
@@ -1542,13 +1547,19 @@ class DockerContainerAPI:
                     str(err),
                     self._retry_interval,
                 )
-            except asyncio.exceptions.CancelledError as err:
-                _LOGGER.error(
-                    "[%s] %s: Container not available anymore (3c) CancelledError. Retry in %d seconds",
+            except asyncio.exceptions.CancelledError:
+                # A real cancellation (e.g. destroy() during config entry
+                # unload) must stop this loop, not be treated as a
+                # transient error to retry from - looping on regardless
+                # left cancelled tasks alive after unload, spamming
+                # "Session is closed" once the shared TCP session had
+                # already been closed by destroy().
+                _LOGGER.debug(
+                    "[%s] %s: Container monitor cancelled",
                     self._instance,
                     self._name,
-                    self._retry_interval,
                 )
+                break
             except asyncio.TimeoutError as err:
                 _LOGGER.error(
                     "[%s] %s: Container not available anymore (3d) TimeoutError. Retry in %d seconds",
