@@ -170,6 +170,9 @@ class DockerAPI:
         self._tcp_connector = None
         self._tcp_session = None
         self._tcp_ssl_context = None
+        # Guards the EVENT_HOMEASSISTANT_STOP listener so a reconnect-driven
+        # re-run of run() doesn't register a duplicate one.
+        self._stop_listener_registered = False
 
         _LOGGER.debug("[%s]: Helper version: %s", self._instance, VERSION)
 
@@ -339,9 +342,9 @@ class DockerAPI:
             self._containers[cname] = None
 
     #############################################################
-    async def run(self):
+    async def run(self, reconnect: bool = False):
 
-        _LOGGER.debug("[%s]: DockerAPI run()", self._instance)
+        _LOGGER.debug("[%s]: DockerAPI run(reconnect=%s)", self._instance, reconnect)
 
         # Start task to monitor events of create/delete/start/stop
         if "events" not in self._tasks:
@@ -377,7 +380,63 @@ class DockerAPI:
 
         self._remove_unmonitored_container_devices()
 
-        self._hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._monitor_stop)
+        if reconnect:
+            # We are resuming after a lost/reconnected Docker connection
+            # (see _restart_after_reconnect()). Platforms were already
+            # forwarded once at config-entry setup and won't run again on
+            # their own, so re-trigger them the same way as
+            # async_forward_entry_setups() did initially - this recreates
+            # the host-level sensors plus every container's entities that
+            # were torn down by run_docker_events() when the connection
+            # dropped.
+            # Give the container loops a moment to complete their first
+            # poll, so entities that read get_info() at setup (e.g.
+            # network availability) don't see empty data.
+            await asyncio.sleep(1)
+
+            for component in COMPONENTS:
+                load_platform(
+                    self._hass,
+                    component,
+                    DOMAIN,
+                    {CONF_NAME: self._instance},
+                    self._config,
+                )
+
+        if not self._stop_listener_registered:
+            self._hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STOP, self._monitor_stop
+            )
+            self._stop_listener_registered = True
+
+    #############################################################
+    async def _restart_after_reconnect(self) -> None:
+        """Resume monitoring after init() re-established a lost connection.
+
+        run_docker_events() tears everything down (entities, container
+        monitors) when the events subscription dies, then calls
+        _reconnectx() to get a fresh Docker/Portainer connection - but
+        nothing was resuming polling or recreating entities afterwards, so
+        the integration stayed dark until the user reloaded it by hand.
+        This restarts the events/info loops and every container monitor,
+        and re-creates the entities that were torn down.
+
+        Called from inside the currently-running "events" task itself, so
+        its own self._tasks entry is left for run() to recreate once this
+        task returns and ends; the "info" task is cancelled explicitly
+        here since it may still be sleeping and not yet have noticed
+        _dockerStopped, which would otherwise leave two info loops running
+        concurrently once run() starts a new one.
+        """
+        self._dockerStopped = False
+
+        info_task = self._tasks.pop("info", None)
+        if info_task and not info_task.done():
+            info_task.cancel()
+
+        self._tasks.pop("events", None)
+
+        await self.run(reconnect=True)
 
     #############################################################
     def _remove_unmonitored_container_devices(self) -> None:
@@ -539,7 +598,7 @@ class DockerAPI:
         for callback in self._subscribers:
             callback(remove=True)
 
-        self._subscriber: list[Callable] = []
+        self._subscribers = []
 
     #############################################################
     def register_callback(self, callback: Callable, variable: str) -> None:
@@ -581,32 +640,7 @@ class DockerAPI:
                 # When we receive none, the connection normally is broken
                 if event is None:
                     _LOGGER.error("[%s]: run_docker_events loop ended", self._instance)
-
-                    # Set this to know if we stopped or HASS is stopping
-                    self._dockerStopped = True
-
-                    # Remove the docker info sensors
-                    self.remove_entities()
-
-                    # Remove all the sensors/switches/buttons, they will be auto created if connection is working again
-                    for cname in list(self._containers.keys()):
-                        try:
-                            await self._container_remove(cname)
-                        except Exception as err:
-                            exc_info = True if str(err) == "" else False
-                            _LOGGER.error(
-                                "[%s]: Stopping gave an error %s",
-                                self._instance,
-                                str(err),
-                                exc_info=exc_info,
-                            )
-
-                    # Stop everything and return to the main thread
-                    self._monitor_stop(self._config[CONF_NAME])
-
-                    # TODO: improve reconnectx
-                    await self._reconnectx()
-
+                    await self._handle_docker_disconnected()
                     break
 
                 # Only monitor container events
@@ -769,6 +803,14 @@ class DockerAPI:
                         self.request_refresh()
 
         except Exception as err:
+            # A flaky proxy (Portainer in particular) is more likely to drop
+            # the underlying connection outright than to end the event
+            # stream cleanly with event=None - that surfaces here as an
+            # exception (e.g. a closed/reset TCP connection) rather than
+            # through the "event is None" branch above. Recover the same
+            # way in both cases; without this, the events task just ended
+            # here and monitoring silently stayed dead until the user
+            # reloaded the integration by hand.
             exc_info = True if str(err) == "" else False
             _LOGGER.error(
                 "[%s]: run_docker_events (%s)",
@@ -776,6 +818,53 @@ class DockerAPI:
                 str(err),
                 exc_info=exc_info,
             )
+            try:
+                await self._handle_docker_disconnected()
+            except Exception as err2:
+                exc_info2 = True if str(err2) == "" else False
+                _LOGGER.error(
+                    "[%s]: run_docker_events recovery failed (%s)",
+                    self._instance,
+                    str(err2),
+                    exc_info=exc_info2,
+                )
+
+    #############################################################
+    async def _handle_docker_disconnected(self) -> None:
+        """Tear down and restart everything after the events connection died.
+
+        Common recovery path whether the stream ended cleanly (subscriber.
+        get() returning None) or an exception broke the loop outright -
+        either way the Docker/Portainer connection is gone and needs to be
+        re-established from scratch.
+        """
+        # Set this to know if we stopped or HASS is stopping
+        self._dockerStopped = True
+
+        # Remove the docker info sensors
+        self.remove_entities()
+
+        # Remove all the sensors/switches/buttons, they will be auto created if connection is working again
+        for cname in list(self._containers.keys()):
+            try:
+                await self._container_remove(cname)
+            except Exception as err:
+                exc_info = True if str(err) == "" else False
+                _LOGGER.error(
+                    "[%s]: Stopping gave an error %s",
+                    self._instance,
+                    str(err),
+                    exc_info=exc_info,
+                )
+
+        # Stop everything and return to the main thread
+        self._monitor_stop(self._config[CONF_NAME])
+
+        await self._reconnectx()
+
+        # Resume polling and bring the entities back now that the
+        # connection is re-established.
+        await self._restart_after_reconnect()
 
     #############################################################
     async def _container_create_destroy(self) -> None:
@@ -2063,7 +2152,7 @@ class DockerContainerAPI:
         for callback in self._subscribers:
             callback(remove=True)
 
-        self._subscriber: list[Callable] = []
+        self._subscribers = []
 
     #############################################################
     async def _start(self) -> None:
